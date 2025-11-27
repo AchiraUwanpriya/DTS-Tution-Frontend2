@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useLocation } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import {
   getTeacherStudents,
   getCourseDetails,
   getTeacherCourseStudents,
+  getTeacherCourses,
 } from "../../services/courseService";
 import UserList from "../../components/users/UserList";
 import UserForm from "../../components/users/UserForm";
@@ -454,6 +455,56 @@ const deriveClassOptions = (
   return options;
 };
 
+const deriveTeacherCourseIdSet = (courses) => {
+  const normalizedCourses = Array.isArray(courses) ? courses : [];
+  const ids = toNormalizedIdArray(
+    normalizedCourses.map(
+      (course) =>
+        course?.CourseID ??
+        course?.CourseId ??
+        course?.courseID ??
+        course?.courseId ??
+        course?.id ??
+        course?.Id ??
+        null
+    )
+  );
+  return new Set(ids);
+};
+
+const filterCourseIdsBySet = (courseIds, courseIdSet, shouldFilter) => {
+  const sourceArray = Array.isArray(courseIds) ? courseIds : [courseIds];
+  const normalizedIds = toNormalizedIdArray(sourceArray);
+  if (!shouldFilter) {
+    return normalizedIds;
+  }
+  if (!courseIdSet || courseIdSet.size === 0) {
+    return [];
+  }
+  return normalizedIds.filter((id) => courseIdSet.has(id));
+};
+
+const filterCourseObjectsBySet = (courses, courseIdSet, shouldFilter) => {
+  if (!shouldFilter) {
+    return Array.isArray(courses) ? [...courses] : [];
+  }
+  if (!Array.isArray(courses) || !courseIdSet || courseIdSet.size === 0) {
+    return [];
+  }
+  return courses.filter((course) => {
+    const normalizedCourseId = normalizeIdString(
+      course?.CourseID ??
+        course?.CourseId ??
+        course?.courseID ??
+        course?.courseId ??
+        course?.id ??
+        course?.Id ??
+        null
+    );
+    return normalizedCourseId && courseIdSet.has(normalizedCourseId);
+  });
+};
+
 const TeacherStudents = () => {
   const { id } = useParams();
   const location = useLocation();
@@ -495,6 +546,56 @@ const TeacherStudents = () => {
   const subjectsCacheRef = useRef(null);
   const classSchedulesCacheRef = useRef(null);
   const classOptionsCacheRef = useRef(new Map());
+  const [teacherCourseFilter, setTeacherCourseFilter] = useState({
+    ready: false,
+    courses: [],
+    hadError: false,
+  });
+  const teacherCourseIdSet = useMemo(
+    () => deriveTeacherCourseIdSet(teacherCourseFilter.courses),
+    [teacherCourseFilter.courses]
+  );
+
+  useEffect(() => {
+    setTeacherCourseFilter({ ready: false, courses: [], hadError: false });
+  }, [teacherId]);
+
+  const ensureTeacherCourseFilter = (force = false) => {
+    if (!teacherId) {
+      setTeacherCourseFilter({ ready: false, courses: [], hadError: false });
+      return Promise.resolve({ list: [], ready: false });
+    }
+
+    if (!force && teacherCourseFilter.ready && !teacherCourseFilter.hadError) {
+      return Promise.resolve({
+        list: teacherCourseFilter.courses,
+        ready: true,
+      });
+    }
+
+    return getTeacherCourses(teacherId)
+      .then((list) => {
+        const normalizedList = Array.isArray(list) ? list : [];
+        setTeacherCourseFilter({
+          ready: true,
+          courses: normalizedList,
+          hadError: false,
+        });
+        return { list: normalizedList, ready: true };
+      })
+      .catch((error) => {
+        console.error("Failed to load teacher courses for filtering:", error);
+        setTeacherCourseFilter({
+          ready: true,
+          courses: [],
+          hadError: true,
+        });
+        return { list: [], ready: true };
+      });
+  };
+
+  const sanitizeCourseSelection = (values) =>
+    filterCourseIdsBySet(values, teacherCourseIdSet, teacherCourseFilter.ready);
 
   const refreshStudents = async () => {
     if (!teacherId) {
@@ -554,15 +655,33 @@ const TeacherStudents = () => {
     setEditStep(1);
     setForceUserType(3);
     try {
-      const [userData, studentData, enrollments] = await Promise.all([
-        getUserById(userId),
-        getStudentById(userId),
-        getEnrollmentsByStudent(userId),
-      ]);
+      const teacherCourseContextPromise = ensureTeacherCourseFilter();
+      const [userData, studentData, enrollments, teacherCourseContext] =
+        await Promise.all([
+          getUserById(userId),
+          getStudentById(userId),
+          getEnrollmentsByStudent(userId),
+          teacherCourseContextPromise,
+        ]);
+
+      const teacherCoursesFilterSet = deriveTeacherCourseIdSet(
+        teacherCourseContext.list
+      );
+      const isCourseInScope = (rawCourseId) => {
+        if (!teacherCourseContext.ready) {
+          return true;
+        }
+        if (!teacherCoursesFilterSet || teacherCoursesFilterSet.size === 0) {
+          return false;
+        }
+        return teacherCoursesFilterSet.has(rawCourseId);
+      };
 
       const enrollmentList = Array.isArray(enrollments) ? enrollments : [];
-      const initialCourseIds = toNormalizedIdArray(
-        enrollmentList.map((enrollment) => enrollment?.CourseID)
+      const initialCourseIds = filterCourseIdsBySet(
+        enrollmentList.map((enrollment) => enrollment?.CourseID),
+        teacherCoursesFilterSet,
+        teacherCourseContext.ready
       );
 
       const assignmentMap = {};
@@ -570,7 +689,7 @@ const TeacherStudents = () => {
         const courseId = normalizeIdString(
           enrollment?.CourseID ?? enrollment?.raw?.CourseID
         );
-        if (!courseId) {
+        if (!courseId || !isCourseInScope(courseId)) {
           return;
         }
 
@@ -612,19 +731,46 @@ const TeacherStudents = () => {
           ? { ...userData, ...studentData }
           : userData;
 
-      if (initialCourseIds.length) {
+      if (teacherCourseContext.ready) {
+        const numericCourseIds = initialCourseIds.map((value) => {
+          const numeric = Number(value);
+          return Number.isNaN(numeric) ? value : numeric;
+        });
+
+        mergedBase.StudentCourseIDs = numericCourseIds;
+        mergedBase.CourseIDs = numericCourseIds;
+
+        mergedBase.Courses = filterCourseObjectsBySet(
+          mergedBase?.Courses,
+          teacherCoursesFilterSet,
+          true
+        );
+      } else {
         const existingIds = toNormalizedIdArray(
           Array.isArray(mergedBase?.StudentCourseIDs)
             ? mergedBase.StudentCourseIDs
             : []
         );
-        mergedBase.StudentCourseIDs = toNormalizedIdArray([
+        const mergedIds = toNormalizedIdArray([
           ...existingIds,
           ...initialCourseIds,
         ]).map((value) => {
           const numeric = Number(value);
           return Number.isNaN(numeric) ? value : numeric;
         });
+        mergedBase.StudentCourseIDs = mergedIds;
+      }
+
+      if (!Array.isArray(mergedBase.StudentCourseIDs)) {
+        mergedBase.StudentCourseIDs = [];
+      }
+
+      if (
+        teacherCourseContext.ready &&
+        (!Array.isArray(mergedBase.CourseIDs) ||
+          mergedBase.CourseIDs.length !== mergedBase.StudentCourseIDs.length)
+      ) {
+        mergedBase.CourseIDs = mergedBase.StudentCourseIDs.slice();
       }
 
       setEditUser(mergedBase);
@@ -742,7 +888,7 @@ const TeacherStudents = () => {
     setCreateStep(1);
     setPendingCoreData(null);
     setPendingStudentData(null);
-    setCourseSelection(defaultCourseSelection);
+    setCourseSelection(sanitizeCourseSelection(defaultCourseSelection));
     setCoursePickerError("");
     setShowClassPicker(false);
     setClassOptions([]);
@@ -756,7 +902,7 @@ const TeacherStudents = () => {
     setCreateStep(1);
     setPendingCoreData(null);
     setPendingStudentData(null);
-    setCourseSelection(defaultCourseSelection);
+    setCourseSelection(sanitizeCourseSelection(defaultCourseSelection));
     setCoursePickerError("");
     setShowClassPicker(false);
     setClassOptions([]);
@@ -801,10 +947,12 @@ const TeacherStudents = () => {
 
     setPendingStudentData(normalizedPayload);
     setCourseSelection(
-      (initialSelection && initialSelection.length
-        ? initialSelection
-        : defaultCourseSelection
-      ).map(String)
+      sanitizeCourseSelection(
+        (initialSelection && initialSelection.length
+          ? initialSelection
+          : defaultCourseSelection
+        ).map(String)
+      )
     );
     setCreateOpen(false);
     setCreateStep(1);
@@ -818,7 +966,7 @@ const TeacherStudents = () => {
     setShowCoursePicker(false);
     setPendingStudentData(null);
     setCoursePickerError("");
-    setCourseSelection(defaultCourseSelection);
+    setCourseSelection(sanitizeCourseSelection(defaultCourseSelection));
     setShowClassPicker(false);
     setClassOptions([]);
     setClassSelection([]);
@@ -953,8 +1101,16 @@ const TeacherStudents = () => {
   };
 
   const handleStudentCourseSelectionChange = async (nextIds, prevIds = []) => {
-    const previous = toNormalizedIdArray(prevIds);
-    const next = toNormalizedIdArray(nextIds);
+    const previous = filterCourseIdsBySet(
+      prevIds,
+      teacherCourseIdSet,
+      teacherCourseFilter.ready
+    );
+    const next = filterCourseIdsBySet(
+      nextIds,
+      teacherCourseIdSet,
+      teacherCourseFilter.ready
+    );
 
     const previousSet = new Set(previous);
     const nextSet = new Set(next);
@@ -965,7 +1121,18 @@ const TeacherStudents = () => {
     const pendingAssignments = Object.entries(
       editCourseClassAssignmentsRef.current || {}
     ).reduce((acc, [courseId, entries]) => {
-      acc[courseId] = Array.isArray(entries)
+      const normalizedCourseId = normalizeIdString(courseId);
+      if (!normalizedCourseId) {
+        return acc;
+      }
+      if (
+        teacherCourseFilter.ready &&
+        teacherCourseIdSet.size > 0 &&
+        !teacherCourseIdSet.has(normalizedCourseId)
+      ) {
+        return acc;
+      }
+      acc[normalizedCourseId] = Array.isArray(entries)
         ? entries.map((entry) => ({ ...entry }))
         : [];
       return acc;
@@ -977,6 +1144,13 @@ const TeacherStudents = () => {
 
     try {
       for (const courseId of added) {
+        if (
+          teacherCourseFilter.ready &&
+          teacherCourseIdSet.size > 0 &&
+          !teacherCourseIdSet.has(courseId)
+        ) {
+          continue;
+        }
         let payload;
         try {
           payload = await loadClassOptionsForCourse(courseId);
@@ -1286,7 +1460,7 @@ const TeacherStudents = () => {
       setShowCoursePicker(false);
       setShowClassPicker(false);
       setPendingStudentData(null);
-      setCourseSelection(defaultCourseSelection);
+      setCourseSelection(sanitizeCourseSelection(defaultCourseSelection));
       setClassSelection([]);
       setClassOptions([]);
       setClassPickerLoading(false);
@@ -1302,11 +1476,11 @@ const TeacherStudents = () => {
 
   const handleCoursePickerProceed = async (selectedIds) => {
     const ids = (selectedIds || []).map((id) => String(id)).filter(Boolean);
-    setCourseSelection(ids);
+    setCourseSelection(sanitizeCourseSelection(ids));
 
     if (!pendingStudentData) {
       setShowCoursePicker(false);
-      setCourseSelection(defaultCourseSelection);
+      setCourseSelection(sanitizeCourseSelection(defaultCourseSelection));
       return;
     }
 
@@ -1417,13 +1591,46 @@ const TeacherStudents = () => {
 
         let merged = { ...updatedUser };
         try {
-          const [studentRec, courses] = await Promise.all([
-            getStudentById(uid),
-            getStudentCourses(uid),
-          ]);
-          const courseIds = (courses || [])
-            .map((c) => c.id ?? c.CourseID ?? c.courseId)
-            .filter((v) => v !== undefined && v !== null);
+          const teacherCourseContextPromise = ensureTeacherCourseFilter();
+          const [studentRec, courses, teacherCourseContext] = await Promise.all(
+            [
+              getStudentById(uid),
+              getStudentCourses(uid),
+              teacherCourseContextPromise,
+            ]
+          );
+
+          const teacherCoursesFilterSet = deriveTeacherCourseIdSet(
+            teacherCourseContext.list
+          );
+
+          const filteredCourseIds = filterCourseIdsBySet(
+            (courses || []).map(
+              (c) =>
+                c?.id ??
+                c?.CourseID ??
+                c?.CourseId ??
+                c?.courseID ??
+                c?.courseId ??
+                null
+            ),
+            teacherCoursesFilterSet,
+            teacherCourseContext.ready
+          ).map((value) => {
+            const numeric = Number(value);
+            return Number.isNaN(numeric) ? value : numeric;
+          });
+
+          const numericPrefillIds = filteredCourseIds.map((value) => {
+            const numeric = Number(value);
+            return Number.isNaN(numeric) ? value : numeric;
+          });
+
+          const sanitizedCourses = filterCourseObjectsBySet(
+            courses,
+            teacherCoursesFilterSet,
+            teacherCourseContext.ready
+          );
 
           merged = {
             ...merged,
@@ -1447,7 +1654,9 @@ const TeacherStudents = () => {
               studentRec?.EnrollmentDate ??
               studentRec?.enrollmentDate ??
               merged.EnrollmentDate,
-            StudentCourseIDs: courseIds,
+            StudentCourseIDs: numericPrefillIds,
+            CourseIDs: numericPrefillIds,
+            Courses: sanitizedCourses,
           };
         } catch (prefillErr) {
           console.warn("Failed to preload student details", prefillErr);
@@ -1478,8 +1687,24 @@ const TeacherStudents = () => {
           ParentContact: formData.ParentContact,
         });
 
-        const desiredCourseIds = toNormalizedIdArray(
-          formData.StudentCourseIDs || []
+        const teacherCourseContext = await ensureTeacherCourseFilter();
+        const teacherCoursesFilterSet = deriveTeacherCourseIdSet(
+          teacherCourseContext.list
+        );
+        const isCourseInScope = (courseId) => {
+          if (!teacherCourseContext.ready) {
+            return true;
+          }
+          if (!teacherCoursesFilterSet || teacherCoursesFilterSet.size === 0) {
+            return false;
+          }
+          return teacherCoursesFilterSet.has(courseId);
+        };
+
+        const desiredCourseIds = filterCourseIdsBySet(
+          formData.StudentCourseIDs || [],
+          teacherCoursesFilterSet,
+          teacherCourseContext.ready
         );
 
         try {
@@ -1493,6 +1718,10 @@ const TeacherStudents = () => {
               enrollment?.CourseID ?? enrollment?.raw?.CourseID
             );
             if (!courseIdStr) {
+              continue;
+            }
+
+            if (!isCourseInScope(courseIdStr)) {
               continue;
             }
 
@@ -1549,6 +1778,9 @@ const TeacherStudents = () => {
             formData.EnrollmentDate || new Date().toISOString();
 
           for (const courseIdStr of desiredCourseIds) {
+            if (!isCourseInScope(courseIdStr)) {
+              continue;
+            }
             const assignmentEntries = (
               editCourseClassAssignmentsRef.current?.[courseIdStr] || []
             )
@@ -1721,7 +1953,9 @@ const TeacherStudents = () => {
                     { id: 3, name: "Student" },
                   ]}
                   forceUserType={3}
-                  initialCourseSelection={defaultCourseSelection}
+                  initialCourseSelection={sanitizeCourseSelection(
+                    defaultCourseSelection
+                  )}
                   teacherId={teacherId}
                   showCoreFields={createStep === 1}
                   showRoleFields={createStep === 2}
