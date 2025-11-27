@@ -74,6 +74,20 @@ const normalizeIdString = (value) => {
   return str;
 };
 
+const toNormalizedIdArray = (values) => {
+  const seen = new Set();
+  const result = [];
+  (values || []).forEach((value) => {
+    const normalized = normalizeIdString(value);
+    if (!normalized || seen.has(normalized)) {
+      return;
+    }
+    seen.add(normalized);
+    result.push(normalized);
+  });
+  return result;
+};
+
 const dayNames = [
   "Monday",
   "Tuesday",
@@ -518,6 +532,21 @@ const TeacherStudents = () => {
   };
 
   const [membersTab, setMembersTab] = useState("active");
+  const [editCourseClassAssignments, setEditCourseClassAssignments] = useState(
+    {}
+  );
+  const editCourseClassAssignmentsRef = useRef(editCourseClassAssignments);
+  const [editClassPickerVisible, setEditClassPickerVisible] = useState(false);
+  const [editClassPickerOptions, setEditClassPickerOptions] = useState([]);
+  const [editClassPickerCourseName, setEditClassPickerCourseName] =
+    useState("");
+  const [editClassPickerInitialSelection, setEditClassPickerInitialSelection] =
+    useState([]);
+  const editClassPickerResolverRef = useRef(null);
+
+  useEffect(() => {
+    editCourseClassAssignmentsRef.current = editCourseClassAssignments;
+  }, [editCourseClassAssignments]);
 
   const openEdit = async (userId) => {
     setEditLoading(true);
@@ -525,13 +554,83 @@ const TeacherStudents = () => {
     setEditStep(1);
     setForceUserType(3);
     try {
-      const [userData, studentData] = await Promise.all([
+      const [userData, studentData, enrollments] = await Promise.all([
         getUserById(userId),
         getStudentById(userId),
+        getEnrollmentsByStudent(userId),
       ]);
-      setEditUser(studentData ? { ...userData, ...studentData } : userData);
+
+      const enrollmentList = Array.isArray(enrollments) ? enrollments : [];
+      const initialCourseIds = toNormalizedIdArray(
+        enrollmentList.map((enrollment) => enrollment?.CourseID)
+      );
+
+      const assignmentMap = {};
+      enrollmentList.forEach((enrollment) => {
+        const courseId = normalizeIdString(
+          enrollment?.CourseID ?? enrollment?.raw?.CourseID
+        );
+        if (!courseId) {
+          return;
+        }
+
+        const subjectId = normalizeIdString(
+          enrollment?.raw?.SubjectID ??
+            enrollment?.raw?.subjectID ??
+            enrollment?.SubjectID ??
+            enrollment?.subjectID
+        );
+
+        const courseSubjectId = normalizeIdString(
+          enrollment?.raw?.CourseSubjectID ??
+            enrollment?.raw?.courseSubjectID ??
+            enrollment?.CourseSubjectID ??
+            enrollment?.courseSubjectID
+        );
+
+        if (!assignmentMap[courseId]) {
+          assignmentMap[courseId] = [];
+        }
+
+        if (subjectId) {
+          const exists = assignmentMap[courseId].some(
+            (entry) => entry.subjectId === subjectId
+          );
+          if (!exists) {
+            assignmentMap[courseId].push({
+              subjectId,
+              courseSubjectId: courseSubjectId ?? null,
+            });
+          }
+        }
+      });
+
+      setEditCourseClassAssignments(assignmentMap);
+
+      const mergedBase =
+        studentData && typeof studentData === "object"
+          ? { ...userData, ...studentData }
+          : userData;
+
+      if (initialCourseIds.length) {
+        const existingIds = toNormalizedIdArray(
+          Array.isArray(mergedBase?.StudentCourseIDs)
+            ? mergedBase.StudentCourseIDs
+            : []
+        );
+        mergedBase.StudentCourseIDs = toNormalizedIdArray([
+          ...existingIds,
+          ...initialCourseIds,
+        ]).map((value) => {
+          const numeric = Number(value);
+          return Number.isNaN(numeric) ? value : numeric;
+        });
+      }
+
+      setEditUser(mergedBase);
     } catch (err) {
       console.error("Error loading user for edit:", err);
+      setEditCourseClassAssignments({});
       const fallback = students.find((s) => (s.UserID || s.id) === userId);
       setEditUser(fallback || null);
     } finally {
@@ -549,7 +648,10 @@ const TeacherStudents = () => {
           const id = u.UserID || u.id || u.userID || u.userId || null;
           const updatedId =
             updated.UserID || updated.id || updated.userID || updated.userId;
-          return String(id) === String(updatedId) ? updated : u;
+          // Merge the updated data with existing data, ensuring IsActive is preserved
+          return String(id) === String(updatedId)
+            ? { ...u, ...updated, IsActive: true }
+            : u;
         })
       );
       setToastMessage("User activated.");
@@ -574,7 +676,10 @@ const TeacherStudents = () => {
           const id = u.UserID || u.id || u.userID || u.userId || null;
           const updatedId =
             updated.UserID || updated.id || updated.userID || updated.userId;
-          return String(id) === String(updatedId) ? updated : u;
+          // Merge the updated data with existing data, ensuring IsActive is preserved
+          return String(id) === String(updatedId)
+            ? { ...u, ...updated, IsActive: false }
+            : u;
         })
       );
       setToastMessage("User deactivated.");
@@ -807,6 +912,136 @@ const TeacherStudents = () => {
     const payload = { options, courseName };
     classOptionsCacheRef.current.set(normalizedId, payload);
     return payload;
+  };
+
+  const requestEditClassSelection = ({
+    courseId,
+    courseName,
+    options,
+    initialSelected,
+  }) =>
+    new Promise((resolve) => {
+      editClassPickerResolverRef.current = resolve;
+      setEditClassPickerCourseName(courseName || "");
+      setEditClassPickerOptions(options || []);
+      setEditClassPickerInitialSelection(
+        Array.isArray(initialSelected)
+          ? initialSelected.map((value) => String(value))
+          : []
+      );
+      setEditClassPickerVisible(true);
+    });
+
+  const handleEditClassPickerClose = () => {
+    if (editClassPickerResolverRef.current) {
+      const resolver = editClassPickerResolverRef.current;
+      editClassPickerResolverRef.current = null;
+      setEditClassPickerVisible(false);
+      resolver(null);
+      return;
+    }
+    setEditClassPickerVisible(false);
+  };
+
+  const handleEditClassPickerProceed = (selectedIds) => {
+    const resolver = editClassPickerResolverRef.current;
+    editClassPickerResolverRef.current = null;
+    setEditClassPickerVisible(false);
+    if (resolver) {
+      resolver(Array.isArray(selectedIds) ? selectedIds : []);
+    }
+  };
+
+  const handleStudentCourseSelectionChange = async (nextIds, prevIds = []) => {
+    const previous = toNormalizedIdArray(prevIds);
+    const next = toNormalizedIdArray(nextIds);
+
+    const previousSet = new Set(previous);
+    const nextSet = new Set(next);
+
+    const removed = previous.filter((id) => !nextSet.has(id));
+    const added = next.filter((id) => !previousSet.has(id));
+
+    const pendingAssignments = Object.entries(
+      editCourseClassAssignmentsRef.current || {}
+    ).reduce((acc, [courseId, entries]) => {
+      acc[courseId] = Array.isArray(entries)
+        ? entries.map((entry) => ({ ...entry }))
+        : [];
+      return acc;
+    }, {});
+
+    removed.forEach((courseId) => {
+      delete pendingAssignments[courseId];
+    });
+
+    try {
+      for (const courseId of added) {
+        let payload;
+        try {
+          payload = await loadClassOptionsForCourse(courseId);
+        } catch (error) {
+          console.error(
+            "Failed to load class options for course selection",
+            error
+          );
+          setFormError(
+            error?.message ||
+              "Unable to load classes for the selected course. Please try again."
+          );
+          return { accepted: false, finalIds: previous };
+        }
+
+        const { options = [], courseName = "" } = payload || {};
+
+        if (!options.length) {
+          pendingAssignments[courseId] = [];
+          continue;
+        }
+
+        const initialSelected = (pendingAssignments[courseId] || []).map(
+          (entry) => entry?.subjectId
+        );
+
+        const selection = await requestEditClassSelection({
+          courseId,
+          courseName,
+          options,
+          initialSelected,
+        });
+
+        if (!selection) {
+          return { accepted: false, finalIds: previous };
+        }
+
+        const normalizedSelection = toNormalizedIdArray(selection);
+        const optionMap = new Map(
+          options.map((option) => [normalizeIdString(option.id), option])
+        );
+
+        pendingAssignments[courseId] = normalizedSelection.map((subjectId) => {
+          const option = optionMap.get(subjectId) || {};
+          return {
+            subjectId,
+            courseSubjectId: normalizeIdString(option.courseSubjectId),
+          };
+        });
+      }
+    } catch (error) {
+      console.error(
+        "Error while processing class selection for student course update",
+        error
+      );
+      setFormError(
+        error?.message ||
+          "Unable to complete class selection for the chosen course."
+      );
+      return { accepted: false, finalIds: previous };
+    }
+
+    setEditCourseClassAssignments(pendingAssignments);
+
+    return { accepted: true, finalIds: next };
   };
 
   const finalizeStudentCreation = async (
@@ -1243,32 +1478,138 @@ const TeacherStudents = () => {
           ParentContact: formData.ParentContact,
         });
 
-        const desired = (formData.StudentCourseIDs || [])
-          .map((v) => Number(v))
-          .filter((n) => !isNaN(n));
+        const desiredCourseIds = toNormalizedIdArray(
+          formData.StudentCourseIDs || []
+        );
 
         try {
           const current = await getEnrollmentsByStudent(uid);
-          const currentCourseIds = current
-            .map((e) => Number(e.CourseID))
-            .filter((n) => !isNaN(n));
-          const toAdd = desired.filter(
-            (cid) => !currentCourseIds.includes(cid)
-          );
-          const toRemove = current.filter(
-            (e) => !desired.includes(Number(e.CourseID))
-          );
+          const desiredSet = new Set(desiredCourseIds);
 
-          if (toAdd.length) {
-            await createEnrollmentsForStudent(uid, toAdd, {
-              EnrollmentDate: formData.EnrollmentDate,
-              IsActive: true,
-            });
+          const currentByCourse = new Map();
+
+          for (const enrollment of current) {
+            const courseIdStr = normalizeIdString(
+              enrollment?.CourseID ?? enrollment?.raw?.CourseID
+            );
+            if (!courseIdStr) {
+              continue;
+            }
+
+            if (!desiredSet.has(courseIdStr)) {
+              if (enrollment.EnrollmentID != null) {
+                await deleteEnrollment(enrollment.EnrollmentID);
+              }
+              continue;
+            }
+
+            const subjectIdStr = normalizeIdString(
+              enrollment?.raw?.SubjectID ??
+                enrollment?.raw?.subjectID ??
+                enrollment?.SubjectID ??
+                enrollment?.subjectID
+            );
+
+            const courseSubjectIdStr = normalizeIdString(
+              enrollment?.raw?.CourseSubjectID ??
+                enrollment?.raw?.courseSubjectID ??
+                enrollment?.CourseSubjectID ??
+                enrollment?.courseSubjectID
+            );
+
+            const entry = currentByCourse.get(courseIdStr) || {
+              subjects: new Map(),
+              courseOnly: null,
+            };
+
+            if (subjectIdStr) {
+              entry.subjects.set(subjectIdStr, {
+                enrollment,
+                courseSubjectId: courseSubjectIdStr,
+              });
+            } else if (!entry.courseOnly) {
+              entry.courseOnly = enrollment;
+            }
+
+            currentByCourse.set(courseIdStr, entry);
           }
 
-          for (const e of toRemove) {
-            if (e.EnrollmentID != null) {
-              await deleteEnrollment(e.EnrollmentID);
+          const toApiId = (value) => {
+            if (value === null || value === undefined) {
+              return value;
+            }
+            if (typeof value === "number") {
+              return value;
+            }
+            const numeric = Number(value);
+            return Number.isNaN(numeric) ? value : numeric;
+          };
+
+          const enrollmentDate =
+            formData.EnrollmentDate || new Date().toISOString();
+
+          for (const courseIdStr of desiredCourseIds) {
+            const assignmentEntries = (
+              editCourseClassAssignmentsRef.current?.[courseIdStr] || []
+            )
+              .map((entry) => (entry && entry.subjectId ? { ...entry } : null))
+              .filter(Boolean);
+
+            const targetSubjectIds = new Set(
+              assignmentEntries.map((entry) => entry.subjectId)
+            );
+
+            const currentEntry = currentByCourse.get(courseIdStr) || {
+              subjects: new Map(),
+              courseOnly: null,
+            };
+
+            if (targetSubjectIds.size > 0) {
+              for (const assignment of assignmentEntries) {
+                if (currentEntry.subjects.has(assignment.subjectId)) {
+                  continue;
+                }
+
+                const courseSubjectId = assignment.courseSubjectId ?? null;
+
+                await createEnrollment({
+                  StudentID: toApiId(uid),
+                  CourseID: toApiId(courseIdStr),
+                  SubjectID: toApiId(assignment.subjectId),
+                  ...(courseSubjectId !== null && courseSubjectId !== undefined
+                    ? { CourseSubjectID: toApiId(courseSubjectId) }
+                    : {}),
+                  EnrollmentDate: enrollmentDate,
+                  IsActive: true,
+                });
+              }
+
+              for (const [subjectId, info] of currentEntry.subjects) {
+                if (!targetSubjectIds.has(subjectId)) {
+                  if (info.enrollment?.EnrollmentID != null) {
+                    await deleteEnrollment(info.enrollment.EnrollmentID);
+                  }
+                }
+              }
+
+              if (currentEntry.courseOnly?.EnrollmentID != null) {
+                await deleteEnrollment(currentEntry.courseOnly.EnrollmentID);
+              }
+            } else {
+              for (const info of currentEntry.subjects.values()) {
+                if (info.enrollment?.EnrollmentID != null) {
+                  await deleteEnrollment(info.enrollment.EnrollmentID);
+                }
+              }
+
+              if (!currentEntry.courseOnly) {
+                await createEnrollment({
+                  StudentID: toApiId(uid),
+                  CourseID: toApiId(courseIdStr),
+                  EnrollmentDate: enrollmentDate,
+                  IsActive: true,
+                });
+              }
             }
           }
         } catch (enSyncErr) {
@@ -1287,6 +1628,15 @@ const TeacherStudents = () => {
       }
 
       await refreshStudents();
+      setEditCourseClassAssignments({});
+      setEditClassPickerVisible(false);
+      setEditClassPickerOptions([]);
+      setEditClassPickerInitialSelection([]);
+      setEditClassPickerCourseName("");
+      if (editClassPickerResolverRef.current) {
+        editClassPickerResolverRef.current(null);
+        editClassPickerResolverRef.current = null;
+      }
       setEditOpen(false);
       setEditUser(null);
       setForceUserType(null);
@@ -1385,8 +1735,16 @@ const TeacherStudents = () => {
 
       <div className="bg-gradient-to-br from-white to-indigo-50/70 dark:from-gray-900/70 dark:to-indigo-950/20 backdrop-blur shadow-lg ring-1 ring-indigo-100 dark:ring-indigo-800 rounded-2xl p-4 sm:p-6">
         {(() => {
-          const isActiveFlag = (u) =>
-            Boolean(u?.IsActive ?? u?.isActive ?? true);
+          const isActiveFlag = (u) => {
+            // Explicitly check for IsActive property, don't default to true if it's false or 0
+            const activeValue =
+              u?.IsActive !== undefined && u?.IsActive !== null
+                ? u.IsActive
+                : u?.isActive !== undefined && u?.isActive !== null
+                ? u.isActive
+                : true;
+            return Boolean(activeValue);
+          };
           const activeStudents = (students || []).filter(isActiveFlag);
           const inactiveStudents = (students || []).filter(
             (u) => !isActiveFlag(u)
@@ -1523,6 +1881,31 @@ const TeacherStudents = () => {
         onProceed={handleClassPickerProceed}
       />
 
+      <ClassPickerModal
+        isOpen={editClassPickerVisible}
+        onClose={handleEditClassPickerClose}
+        options={editClassPickerOptions}
+        initialSelected={editClassPickerInitialSelection}
+        title={
+          editClassPickerCourseName
+            ? `Select Class for ${editClassPickerCourseName}`
+            : "Select Class"
+        }
+        description={
+          editClassPickerCourseName
+            ? `Choose the class or section for ${editClassPickerCourseName}.`
+            : "Choose the class for the selected course."
+        }
+        saving={false}
+        loading={false}
+        errorMessage=""
+        multiSelect={false}
+        requireSelection={editClassPickerOptions.length > 0}
+        proceedLabel="Save Selection"
+        cancelLabel="Cancel"
+        onProceed={handleEditClassPickerProceed}
+      />
+
       {/* Edit Student Popup (admin-style multi-step modal) */}
       <AnimatePresence>
         {isEditOpen && (
@@ -1544,6 +1927,15 @@ const TeacherStudents = () => {
                 </h2>
                 <button
                   onClick={() => {
+                    if (editClassPickerResolverRef.current) {
+                      editClassPickerResolverRef.current(null);
+                      editClassPickerResolverRef.current = null;
+                    }
+                    setEditClassPickerVisible(false);
+                    setEditClassPickerOptions([]);
+                    setEditClassPickerInitialSelection([]);
+                    setEditClassPickerCourseName("");
+                    setEditCourseClassAssignments({});
                     setEditOpen(false);
                     setEditUser(null);
                     setForceUserType(null);
@@ -1577,9 +1969,18 @@ const TeacherStudents = () => {
                   initialCourseSelection={
                     (editUser?.StudentCourseIDs || []).map(String) || []
                   }
+                  onStudentCourseSelectionChange={
+                    handleStudentCourseSelectionChange
+                  }
                   showCoreFields={editStep === 1}
                   showRoleFields={editStep === 2}
                   submitLabel={editStep === 1 ? "Next" : "Update"}
+                  {...(editStep > 1
+                    ? {
+                        onBack: () =>
+                          setEditStep((s) => Math.max(1, (s || 1) - 1)),
+                      }
+                    : {})}
                 />
               </div>
             </motion.div>

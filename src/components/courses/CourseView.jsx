@@ -15,7 +15,11 @@ import { getCourseAttendance } from "../../services/attendanceService";
 import { getUserById } from "../../services/userService";
 import MaterialList from "../materials/MaterialList";
 import AttendanceList from "../attendance/AttendanceList";
+
+// import Modal from "../common/Modal";
+
 import Modal from "../common/Modal2";
+
 import StudentPickerModal from "../common/StudentPickerModal";
 import CourseForm from "./CourseForm";
 import MaterialForm from "../materials/MaterialForm";
