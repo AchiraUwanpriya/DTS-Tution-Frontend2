@@ -139,44 +139,54 @@ const UserList = ({
                   {/* Identifier column removed per request */}
                   <td className="px-4 py-4 whitespace-nowrap align-top text-right text-sm font-medium">
                     <div className="inline-flex items-center gap-2">
-                      {allowManage && (
-                        <>
-                          <button
-                            onClick={() =>
-                              onEdit && actionId && onEdit(actionId)
-                            }
-                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-indigo-600 hover:text-indigo-800 dark:text-indigo-400"
-                          >
-                            Edit
-                          </button>
-
-                          {!Boolean(user.IsActive ?? user.isActive ?? true) &&
-                            onActivate && (
+                      {allowManage && (() => {
+                        const isActive = Boolean(user.IsActive ?? user.isActive ?? true);
+                        return (
+                          <>
+                            {isActive && (
                               <button
-                                onClick={() =>
-                                  onActivate && actionId && onActivate(actionId)
-                                }
+                                onClick={() => {
+                                  try {
+                                    // If this is a teacher row, persist the id and name
+                                    // so other flows (like Add New Course) can reuse it.
+                                    if (rolePrefix === "T" && actionId) {
+                                      const obj = { id: String(actionId), name: fullName };
+                                      window.localStorage.setItem(
+                                        "selected_teacher_for_course",
+                                        JSON.stringify(obj)
+                                      );
+                                    }
+                                  } catch (e) {
+                                    // ignore storage errors
+                                  }
+                                  onEdit && actionId && onEdit(actionId);
+                                }}
+                                className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-indigo-600 hover:text-indigo-800 dark:text-indigo-400"
+                              >
+                                Edit
+                              </button>
+                            )}
+
+                            {!isActive && onActivate && (
+                              <button
+                                onClick={() => onActivate && actionId && onActivate(actionId)}
                                 className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-green-600 hover:text-green-800"
                               >
                                 Active
                               </button>
                             )}
 
-                          {Boolean(user.IsActive ?? user.isActive ?? true) &&
-                            onDeactivate && (
+                            {isActive && onDeactivate && (
                               <button
-                                onClick={() =>
-                                  onDeactivate &&
-                                  actionId &&
-                                  onDeactivate(actionId)
-                                }
+                                onClick={() => onDeactivate && actionId && onDeactivate(actionId)}
                                 className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-orange-600 hover:text-orange-800"
                               >
                                 Remove
                               </button>
                             )}
-                        </>
-                      )}
+                          </>
+                        );
+                      })()}
                     </div>
                   </td>
                 </tr>

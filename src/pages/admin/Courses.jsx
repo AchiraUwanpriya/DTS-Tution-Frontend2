@@ -4,8 +4,9 @@ import { getAllCourses, createCourse } from "../../services/courseService";
 import SubjectForm from "../../components/admin/SubjectForm";
 import { createSubject } from "../../services/subjectService";
 import CourseList from "../../components/courses/CourseList";
-import Modal from "../../components/common/Modal";
+import Modal from "../../components/common/Modal2";
 import CourseForm from "../../components/courses/CourseForm";
+import TeacherPicker from "../../components/common/TeacherPicker";
 import Button from "../../components/common/Button";
 import Loader from "../../components/common/Loader";
 import EmptyState from "../../components/common/EmptyState";
@@ -15,6 +16,8 @@ const AdminCourses = () => {
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false); // Course form modal
+  const [showTeacherModal, setShowTeacherModal] = useState(false); // select teacher first
+  const [selectedTeacherForNewCourse, setSelectedTeacherForNewCourse] = useState("");
   const [showSubjectModal, setShowSubjectModal] = useState(false); // Subject form modal
   // createdSubject stores an already-persisted subject (with id) when available.
   const [createdSubject, setCreatedSubject] = useState(null);
@@ -179,7 +182,9 @@ const AdminCourses = () => {
           variant="primary"
           onClick={() => {
             setCreatedSubject(null);
-            setShowModal(true);
+            // open teacher selection first
+            setSelectedTeacherForNewCourse("");
+            setShowTeacherModal(true);
           }}
           disabled={savingCourse}
         >
@@ -237,6 +242,46 @@ const AdminCourses = () => {
         />
       </div>
 
+      {/* Teacher selection modal (step 1) */}
+      <Modal
+        isOpen={showTeacherModal}
+        onClose={() => setShowTeacherModal(false)}
+        title="Assign Teacher"
+      >
+        <div className="space-y-4">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Select a teacher</label>
+          <TeacherPicker
+            value={selectedTeacherForNewCourse}
+            onChange={(val) => setSelectedTeacherForNewCourse(val ?? "")}
+            showRefresh={true}
+          />
+
+          <div className="flex justify-end gap-3 pt-4">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setShowTeacherModal(false)}
+              disabled={savingCourse}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => {
+                // require selection before proceeding
+                if (!selectedTeacherForNewCourse) return;
+                setShowTeacherModal(false);
+                // open Course modal and pass selected teacher via initialData
+                setShowModal(true);
+              }}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Course form modal (single-step) */}
       <Modal
         isOpen={showModal}
@@ -260,7 +305,9 @@ const AdminCourses = () => {
               createdSubject?.SubjectID ??
               createdSubject?.subjectId ??
               "",
+            teacherId: selectedTeacherForNewCourse || "",
           }}
+          hideAssignTeacher={true}
         />
       </Modal>
     </div>

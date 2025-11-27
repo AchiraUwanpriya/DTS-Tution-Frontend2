@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Button from "./Button";
-import Modal from "./Modal";
+
+// import Modal from "./Modal";
+
+import Modal from "./Modal2";
+
 import Loader from "./Loader";
 import UserForm from "../users/UserForm";
 import { getAllUsers, createUser } from "../../services/userService";
@@ -277,6 +281,25 @@ const TeacherPicker = ({
           label: `Teacher #${teacherId}`,
         };
         handleTeacherCreated(labelOption);
+      }
+
+      // Persist newly created teacher selection so downstream flows (like
+      // Assign Courses) can pick up the created teacher automatically.
+      try {
+        const persisted = {
+          id: String(teacherId || createdUser?.UserID || createdUser?.id || ""),
+          name:
+            (createdUser?.FirstName || createdUser?.firstName || "") +
+            (createdUser?.LastName || createdUser?.lastName ? ` ${createdUser?.LastName || createdUser?.lastName}` : ""),
+        };
+        if (persisted.id) {
+          window.localStorage.setItem(
+            "selected_teacher_for_course",
+            JSON.stringify(persisted)
+          );
+        }
+      } catch (e) {
+        // ignore localStorage failures
       }
 
       setIsSubmitting(false);

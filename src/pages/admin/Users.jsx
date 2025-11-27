@@ -1241,6 +1241,16 @@ const AdminUsers = () => {
             if (teacherId) {
               setNewTeacherIdForAssignment(String(teacherId));
               setShowAssignTeacherCourses(true);
+              try {
+                const fullName = `${merged.FirstName || merged.firstName || ""} ${merged.LastName || merged.lastName || ""}`.trim();
+                const persisted = { id: String(teacherId), name: fullName };
+                window.localStorage.setItem(
+                  "selected_teacher_for_course",
+                  JSON.stringify(persisted)
+                );
+              } catch (e) {
+                // ignore storage errors
+              }
             }
           } catch (err) {
             setUsers([...users, createdUser]);

@@ -15,7 +15,11 @@ import { getCourseAttendance } from "../../services/attendanceService";
 import { getUserById } from "../../services/userService";
 import MaterialList from "../materials/MaterialList";
 import AttendanceList from "../attendance/AttendanceList";
-import Modal from "../common/Modal";
+
+// import Modal from "../common/Modal";
+
+import Modal from "../common/Modal2";
+
 import StudentPickerModal from "../common/StudentPickerModal";
 import CourseForm from "./CourseForm";
 import MaterialForm from "../materials/MaterialForm";
@@ -38,6 +42,22 @@ import {
 import { createStudent } from "../../services/studentService";
 import { createUser } from "../../services/userService";
 import Toast from "../common/Toast";
+
+// Icons
+import {
+  FiPlus,
+  FiUsers,
+  FiUserCheck,
+  FiUserX,
+  FiX,
+  FiSearch,
+  FiCheckCircle,
+  FiBook,
+  FiChevronRight,
+  FiEdit,
+  FiTrash2,
+  FiRefreshCw,
+} from "react-icons/fi";
 
 const CourseView = () => {
   const { id } = useParams();
@@ -78,6 +98,10 @@ const CourseView = () => {
   const [enrollmentLoadingMap, setEnrollmentLoadingMap] = useState({});
   const [subjectStudentGroups, setSubjectStudentGroups] = useState([]);
   const [selectedSubjectTab, setSelectedSubjectTab] = useState("all");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [alertMessage, setAlertMessage] = useState("");
+  const [alertType, setAlertType] = useState("success");
+  const [showAlert, setShowAlert] = useState(false);
 
   // Ref for student menu wrapper to detect outside clicks
   const studentMenuRef = useRef(null);
@@ -428,8 +452,8 @@ const CourseView = () => {
   const statusBadgeLabel = isCourseActive ? "Active" : "Inactive";
 
   const statusBadgeClassName = isCourseActive
-    ? "px-3 inline-flex text-xs leading-5 font-semibold rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/60 dark:bg-emerald-900/40 dark:text-emerald-300 dark:ring-emerald-800"
-    : "px-3 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-700 ring-1 ring-gray-300/60 dark:bg-gray-800/60 dark:text-gray-300 dark:ring-gray-700";
+    ? "px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/60 dark:bg-emerald-900/40 dark:text-emerald-300 dark:ring-emerald-800"
+    : "px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-700 ring-1 ring-gray-300/60 dark:bg-gray-800/60 dark:text-gray-300 dark:ring-gray-700";
 
   // Close student menu when clicking outside of it
   useEffect(() => {
@@ -586,7 +610,7 @@ const CourseView = () => {
             if (Array.isArray(courseScoped) && courseScoped.length) {
               // merge and dedupe by enrollment id (preferred) then student id
               const map = new Map();
-              const pushEntry = (e, allowOverwrite = false) => {
+              const pushEntry = (e) => {
                 const enrollId =
                   e?.EnrollmentID ?? e?.enrollmentID ?? e?.enrollmentId ?? null;
                 const studentId =
@@ -602,21 +626,12 @@ const CourseView = () => {
                   : `s:${String(studentId)}`;
                 if (!map.has(key)) {
                   map.set(key, e);
-                  return;
-                }
-
-                if (allowOverwrite) {
-                  const existing = map.get(key);
-                  map.set(key, {
-                    ...existing,
-                    ...e,
-                  });
                 }
               };
 
               // first add the already-fetched list so that courseScoped can overwrite
-              (filteredStudents || []).forEach((entry) => pushEntry(entry));
-              courseScoped.forEach((entry) => pushEntry(entry, true));
+              (filteredStudents || []).forEach(pushEntry);
+              courseScoped.forEach(pushEntry);
 
               const merged = Array.from(map.values()).filter(
                 belongsToCurrentCourse
@@ -1227,6 +1242,64 @@ const CourseView = () => {
     return map;
   }, [courseSubjectOptions]);
 
+  // Alert system functions
+  const showAlertMessage = (message, type = "success") => {
+    setAlertMessage(message);
+    setAlertType(type);
+    setShowAlert(true);
+
+    setTimeout(() => {
+      setShowAlert(false);
+    }, 5000);
+  };
+
+  const getAlertBgColor = () => {
+    switch (alertType) {
+      case "success":
+        return "bg-green-100 border-green-300 dark:bg-green-900/70 dark:border-green-700";
+      case "error":
+        return "bg-red-100 border-red-300 dark:bg-red-900/70 dark:border-red-700";
+      case "warning":
+        return "bg-yellow-100 border-yellow-300 dark:bg-yellow-900/70 dark:border-yellow-700";
+      case "info":
+        return "bg-blue-100 border-blue-300 dark:bg-blue-900/70 dark:border-blue-700";
+      default:
+        return "bg-gray-100 border-gray-300 dark:bg-gray-900/70 dark:border-gray-700";
+    }
+  };
+
+  const getAlertTextColor = () => {
+    switch (alertType) {
+      case "success":
+        return "text-green-800 dark:text-green-200";
+      case "error":
+        return "text-red-800 dark:text-red-200";
+      case "warning":
+        return "text-yellow-800 dark:text-yellow-200";
+      case "info":
+        return "text-blue-800 dark:text-blue-200";
+      default:
+        return "text-gray-800 dark:text-gray-200";
+    }
+  };
+
+  const getAlertIcon = () => {
+    switch (alertType) {
+      case "success":
+        return (
+          <FiCheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
+        );
+      case "error":
+        return <FiX className="w-5 h-5 text-red-600 dark:text-red-400" />;
+      case "warning":
+        return <FiBook className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />;
+      case "info":
+        return <FiUsers className="w-5 h-5 text-blue-600 dark:text-blue-400" />;
+      default:
+        return <FiUsers className="w-5 h-5 text-gray-600 dark:text-gray-400" />;
+    }
+  };
+
   const handleExistingStudentConfirm = async (
     selectedIds = [],
     selectedSubjectIds = []
@@ -1323,11 +1396,11 @@ const CourseView = () => {
         setStudentActionError("");
         setShowStudentPicker(false);
         setStudentsRefreshCounter((prev) => prev + 1);
-        setToastType("success");
-        setToastMessage(
+        showAlertMessage(
           uniqueIds.length > 1
             ? `Added ${uniqueIds.length} students to the course.`
-            : `Added 1 student to the course.`
+            : `Added 1 student to the course.`,
+          "success"
         );
         return;
       }
@@ -1507,8 +1580,7 @@ const CourseView = () => {
           toastText = "No enrollment changes were required.";
         }
 
-        setToastType("success");
-        setToastMessage(toastText);
+        showAlertMessage(toastText, "success");
         return;
       }
 
@@ -1548,8 +1620,7 @@ const CourseView = () => {
           segments.push(`${alreadyActiveCount} already active`);
         }
 
-        setToastType("warning");
-        setToastMessage(`${segments.join(", ")}.`);
+        showAlertMessage(`${segments.join(", ")}.`, "warning");
       }
     } catch (error) {
       console.error("Failed to enroll selected students", error);
@@ -1564,8 +1635,7 @@ const CourseView = () => {
   const handleEnrollmentStatusChange = async (studentEntry, makeActive) => {
     const enrollmentId = resolveEnrollmentId(studentEntry);
     if (!enrollmentId) {
-      setToastType("error");
-      setToastMessage("Unable to update enrollment. Missing identifier.");
+      showAlertMessage("Unable to update enrollment. Missing identifier.", "error");
       return;
     }
 
@@ -1703,19 +1773,19 @@ const CourseView = () => {
         })
       );
 
-      setToastType("success");
-      setToastMessage(
+      showAlertMessage(
         makeActive
           ? "Enrollment reactivated."
-          : "Enrollment removed from course."
+          : "Enrollment removed from course.",
+        "success"
       );
     } catch (error) {
       console.error("Failed to update enrollment status:", error);
-      setToastType("error");
-      setToastMessage(
+      showAlertMessage(
         makeActive
           ? "Unable to reactivate enrollment."
-          : "Unable to remove enrollment."
+          : "Unable to remove enrollment.",
+        "error"
       );
     } finally {
       setEnrollmentLoadingMap((prev) => {
@@ -1736,217 +1806,6 @@ const CourseView = () => {
 
   const handleReactivateEnrollment = async (studentEntry) => {
     await handleEnrollmentStatusChange(studentEntry, true);
-  };
-
-  const renderEnrollmentList = (
-    collection,
-    { showRemove = false, showReactivate = false } = {}
-  ) => {
-    if (!collection || !collection.length) {
-      return (
-        <div className="bg-white dark:bg-gray-800 shadow sm:rounded-md">
-          <div className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-300">
-            No students in this list.
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="bg-white dark:bg-gray-800 shadow overflow-hidden  sm:rounded-md">
-        <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-          {collection.map((studentEntry, index) => {
-            const enrollmentId = resolveEnrollmentId(studentEntry);
-            const loading = enrollmentId
-              ? Boolean(enrollmentLoadingMap[enrollmentId])
-              : false;
-            const detailPath = getStudentDetailsPath(studentEntry);
-            const name =
-              `${studentEntry.FirstName || studentEntry.firstName || ""} ${
-                studentEntry.LastName || studentEntry.lastName || ""
-              }`
-                .replace(/\s+/g, " ")
-                .trim() || "Unnamed Student";
-            const username =
-              studentEntry.Username || studentEntry.username || "";
-            const email =
-              studentEntry.Email ||
-              studentEntry.email ||
-              username ||
-              "Details unavailable";
-            const isActive = resolveEnrollmentActive(studentEntry);
-            const statusClass = isActive
-              ? "px-2 inline-flex text-xs font-semibold leading-5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
-              : "px-2 inline-flex text-xs font-semibold leading-5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800/60 dark:text-gray-300";
-            const statusLabel = isActive ? "Active" : "Inactive";
-            const enrollmentDate = formatEnrollmentDate(
-              studentEntry.EnrollmentDate ?? studentEntry.enrollmentDate
-            );
-            const key =
-              enrollmentId || resolveStudentId(studentEntry) || String(index);
-
-            return (
-              <li key={key} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                <div className="px-4 py-4 sm:px-6">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                    <div className="flex items-start">
-                      <div className="flex-shrink-0">
-                        <Avatar
-                          name={`$
-                            studentEntry.FirstName ||
-                            studentEntry.firstName ||
-                            ""
-                          } ${
-                            studentEntry.LastName || studentEntry.lastName || ""
-                          }`}
-                          size="sm"
-                          user={studentEntry}
-                        />
-                      </div>
-                      <div className="min-w-0 flex-1 px-4 md:grid md:grid-cols-2 md:gap-4">
-                        {detailPath ? (
-                          <Link to={detailPath} className="min-w-0 block group">
-                            <p
-                              className="text-sm font-medium text-indigo-600 group-hover:text-indigo-700 dark:text-indigo-400 dark:group-hover:text-indigo-300 truncate max-w-full"
-                              title={name}
-                            >
-                              {name}
-                            </p>
-                            <p className="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
-                              <span
-                                className="truncate block max-w-full"
-                                title={email}
-                              >
-                                {email}
-                              </span>
-                            </p>
-                          </Link>
-                        ) : (
-                          <div className="min-w-0 block">
-                            <p
-                              className="text-sm font-medium text-gray-900 dark:text-white truncate max-w-full"
-                              title={name}
-                            >
-                              {name}
-                            </p>
-                            <p className="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
-                              <span
-                                className="truncate block max-w-full"
-                                title={email}
-                              >
-                                {email}
-                              </span>
-                            </p>
-                          </div>
-                        )}
-
-                        <div className="mt-2 md:mt-0">
-                          <div>
-                            <p className="text-sm text-gray-900 dark:text-white">
-                              Role: Student
-                            </p>
-                            {(studentEntry.RollNumber ||
-                              studentEntry.rollNumber) && (
-                              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                                Roll No:{" "}
-                                {studentEntry.RollNumber ||
-                                  studentEntry.rollNumber}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-center space-x-3 flex-shrink-0 mt-3 sm:mt-0">
-                      <span className={statusClass}>{statusLabel}</span>
-                      {showRemove && (
-                        <button
-                          onClick={() => handleRemoveEnrollment(studentEntry)}
-                          disabled={loading || !enrollmentId}
-                          className={`inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-orange-600 hover:text-orange-800 ${
-                            loading || !enrollmentId
-                              ? "opacity-50 cursor-not-allowed"
-                              : ""
-                          }`}
-                        >
-                          {loading ? "Removing..." : "Remove"}
-                        </button>
-                      )}
-                      {showReactivate && (
-                        <button
-                          onClick={() =>
-                            handleReactivateEnrollment(studentEntry)
-                          }
-                          disabled={loading || !enrollmentId}
-                          className={`inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-green-600 hover:text-green-800 ${
-                            loading || !enrollmentId
-                              ? "opacity-50 cursor-not-allowed"
-                              : ""
-                          }`}
-                        >
-                          {loading ? "Activating..." : "Activate"}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
-    );
-  };
-
-  const renderSubjectSections = (
-    grouped,
-    { showRemove = false, showReactivate = false } = {}
-  ) => {
-    if (!grouped || !grouped.length) {
-      return (
-        <div className="bg-white dark:bg-gray-800 shadow sm:rounded-md">
-          <div className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-300">
-            No subjects available for this course.
-          </div>
-        </div>
-      );
-    }
-
-    return grouped.map((group, index) => {
-      const key =
-        group.subjectId ??
-        group.SubjectID ??
-        group.subjectName ??
-        group.SubjectName ??
-        `idx-${index}`;
-      const displayName =
-        group.subjectName ??
-        group.SubjectName ??
-        `Subject #${group.subjectId ?? group.SubjectID ?? ""}`;
-      const subjectCode =
-        group.subjectCode ??
-        group.SubjectCode ??
-        group.code ??
-        group.Code ??
-        "";
-
-      return (
-        <div key={`subject-${key}`} className="mb-6 last:mb-0">
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-            <h4 className="text-base font-semibold text-gray-900 dark:text-white">
-              {displayName}
-            </h4>
-            {subjectCode ? (
-              <span className="text-sm font-medium text-gray-500 dark:text-gray-300">
-                {subjectCode}
-              </span>
-            ) : null}
-          </div>
-          {renderEnrollmentList(group.students, { showRemove, showReactivate })}
-        </div>
-      );
-    });
   };
 
   const handleStudentPickerClose = () => {
@@ -2153,16 +2012,16 @@ const CourseView = () => {
 
       setStudentActionError("");
       setStudentsRefreshCounter((prev) => prev + 1);
-      setToastType("success");
       if (uniqueSubjectIds.length) {
         const count = uniqueSubjectIds.length;
-        setToastMessage(
+        showAlertMessage(
           `Student created and enrolled in ${count} class${
             count === 1 ? "" : "es"
-          }.`
+          }.`,
+          "success"
         );
       } else {
-        setToastMessage("Student created and enrolled in the course.");
+        showAlertMessage("Student created and enrolled in the course.", "success");
       }
     } catch (error) {
       console.error("Failed to create student", error);
@@ -2239,6 +2098,26 @@ const CourseView = () => {
     setShowMaterialModal(false);
   };
 
+  // Filter students based on search term
+  const filteredStudents = useMemo(() => {
+    const currentStudents = studentTab === "active" ? activeStudents : inactiveStudents;
+    
+    if (!searchTerm) return currentStudents;
+
+    return currentStudents.filter((student) => {
+      const name = `${student.FirstName || student.firstName || ""} ${
+        student.LastName || student.lastName || ""
+      }`.toLowerCase();
+      
+      const email = (student.Email || student.email || "").toLowerCase();
+      const rollNumber = (student.RollNumber || student.rollNumber || "").toLowerCase();
+      
+      return name.includes(searchTerm.toLowerCase()) ||
+             email.includes(searchTerm.toLowerCase()) ||
+             rollNumber.includes(searchTerm.toLowerCase());
+    });
+  }, [activeStudents, inactiveStudents, studentTab, searchTerm]);
+
   if (loading || !course) {
     return <Loader className="py-12" />;
   }
@@ -2276,477 +2155,399 @@ const CourseView = () => {
         .filter(Boolean)
     )
   );
-  const hasSubjectGrouping = subjectGroupsWithStatus.length > 0;
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-6 sm:space-y-8">
-      <div className="overflow-hidden rounded-2xl bg-white/90 shadow-xl ring-1 ring-gray-200 backdrop-blur dark:bg-gray-900/60 dark:ring-gray-700">
-        <div className="flex flex-col items-start justify-between gap-4 px-4 py-5 sm:flex-row sm:items-center sm:gap-6 sm:px-6">
-          <div>
-            <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white">
-              {course.name}
-            </h3>
-            <p className="mt-1 max-w-2xl text-sm text-gray-600 dark:text-gray-300">
-              {course.code}
-              {formattedSubjects ? ` - ${formattedSubjects}` : ""}
-            </p>
+    <div className={`flex flex-col p-1 md:p-1 rounded-xl shadow-md h-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700`}>
+      
+      {/* Alert System */}
+      {showAlert && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[9999] animate-fade-in-down w-full max-w-md px-2 sm:px-0">
+          <div
+            className={`flex items-center justify-between p-3 sm:p-4 rounded-xl shadow-lg border ${getAlertBgColor()} ${getAlertTextColor()} mx-2`}
+          >
+            <div className="flex items-center gap-2 sm:gap-3">
+              {getAlertIcon()}
+              <p className="font-medium text-sm sm:text-base">{alertMessage}</p>
+            </div>
+            <button
+              onClick={() => setShowAlert(false)}
+              className="hover:opacity-70 transition-opacity"
+            >
+              <FiX className="w-4 h-4" />
+            </button>
           </div>
-          <div className="mt-2 flex w-full flex-wrap items-center justify-start gap-2 sm:mt-0 sm:w-auto sm:justify-end">
+        </div>
+      )}
+
+      {/* Header Section */}
+      <div className="mt-2 mb-3 md:mb-5">
+        <div className="flex items-center justify-between mb-1 md:mb-2">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg shadow">
+              <FiBook className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-gray-900 dark:text-white">
+                {course.name}
+              </h1>
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                {course.code} {formattedSubjects && `• ${formattedSubjects}`}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
             {isAdmin && (
               <button
                 onClick={() => setShowEditModal(true)}
-                className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm"
               >
-                Edit
-              </button>
-            )}
-            {isAdmin && isCourseActive && (
-              <button
-                onClick={async () => {
-                  const candidateId =
-                    course?.id ?? course?.CourseID ?? course?.courseId ?? id;
-                  if (!candidateId) return;
-                  const confirmed = confirm(
-                    `Deactivate course "${
-                      course?.name || candidateId
-                    }"? Students will no longer see this course.`
-                  );
-                  if (!confirmed) return;
-                  setDeleting(true);
-                  try {
-                    const updatedCourse = await deactivateCourse(candidateId);
-                    if (updatedCourse) {
-                      setCourse(updatedCourse);
-                    }
-                    setToastType("success");
-                    setToastMessage("Course deactivated");
-                    const redirectPath = isAdmin
-                      ? "/admin/courses"
-                      : "/teacher/courses";
-                    if (isAdmin) {
-                      navigate(redirectPath, { state: { tab: "inactive" } });
-                    } else {
-                      navigate(redirectPath);
-                    }
-                  } catch (err) {
-                    console.error("Failed to deactivate course:", err);
-                    setToastType("error");
-                    setToastMessage("Failed to deactivate course");
-                  } finally {
-                    setDeleting(false);
-                  }
-                }}
-                disabled={deleting}
-                className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-red-700 bg-red-100 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-              >
-                {deleting ? "Removing..." : "Remove"}
-              </button>
-            )}
-            {isAdmin && !isCourseActive && (
-              <button
-                onClick={async () => {
-                  const candidateId =
-                    course?.id ?? course?.CourseID ?? course?.courseId ?? id;
-                  if (!candidateId) return;
-                  const confirmed = confirm(
-                    `Reactivate course "${
-                      course?.name || candidateId
-                    }"? Students will be able to see this course again.`
-                  );
-                  if (!confirmed) return;
-                  setReactivating(true);
-                  try {
-                    const updatedCourse = await reactivateCourse(candidateId);
-                    if (updatedCourse) {
-                      setCourse(updatedCourse);
-                    }
-                    setToastType("success");
-                    setToastMessage("Course reactivated");
-                    const redirectPath = isAdmin
-                      ? "/admin/courses"
-                      : "/teacher/courses";
-                    if (isAdmin) {
-                      navigate(redirectPath, { state: { tab: "active" } });
-                    } else {
-                      navigate(redirectPath);
-                    }
-                  } catch (err) {
-                    console.error("Failed to reactivate course:", err);
-                    setToastType("error");
-                    setToastMessage("Failed to reactivate course");
-                  } finally {
-                    setReactivating(false);
-                  }
-                }}
-                disabled={reactivating}
-                className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-emerald-700 bg-emerald-100 hover:bg-emerald-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
-              >
-                {reactivating ? "Activating..." : "Active"}
+                <FiEdit className="w-4 h-4" /> Edit Course
               </button>
             )}
             <span className={statusBadgeClassName}>{statusBadgeLabel}</span>
           </div>
         </div>
-        <div className="border-t border-gray-200 px-4 py-5 dark:border-gray-700 sm:px-6">
-          <dl className="sm:divide-y sm:divide-gray-100 dark:sm:divide-gray-800">
-            <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              <dt className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                Description
-              </dt>
-              <dd className="mt-1 text-sm text-gray-900 dark:text-white sm:mt-0 sm:col-span-2">
-                {course.description}
-              </dd>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-1 md:gap-2 mb-1 md:mb-2">
+          <div className="rounded-lg p-2 shadow border bg-gray-50 dark:bg-gray-700/50 border-gray-100 dark:border-gray-600">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Total Students</p>
+                <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
+                  {students.length}
+                </p>
+              </div>
+              <FiUsers className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
             </div>
-            <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              <dt className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                Classes Included
-              </dt>
-              <dd className="mt-1 text-sm text-gray-900 dark:text-white sm:mt-0 sm:col-span-2">
-                {subjects.length ? (
-                  <ul className="list-disc list-inside space-y-1">
-                    {subjects.map((subjectName) => (
-                      <li key={subjectName}>
-                        {user?.userType === "student" ? (
-                          <span className="text-gray-900 dark:text-white">
-                            {subjectName}
-                          </span>
-                        ) : (
-                          <Link
-                            to={`/subjects/${encodeURIComponent(subjectName)}`}
-                            state={{ backgroundLocation: location }}
-                            className="text-indigo-600 dark:text-indigo-400 hover:underline hover:text-indigo-700"
-                          >
-                            {subjectName}
-                          </Link>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <span className="text-gray-500 dark:text-gray-400">
-                    No classes assigned yet.
-                  </span>
-                )}
-                {/* Subjects can be managed in the Edit Course form (open Edit) */}
-              </dd>
+          </div>
+          <div className="rounded-lg p-2 shadow border bg-gray-50 dark:bg-gray-700/50 border-gray-100 dark:border-gray-600">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Active</p>
+                <p className="text-sm font-bold text-green-600 dark:text-green-400">
+                  {activeStudents.length}
+                </p>
+              </div>
+              <FiUserCheck className="w-4 h-4 text-green-600 dark:text-green-400" />
             </div>
-            <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              <dt className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                Assigned Teacher
-              </dt>
-              <dd className="mt-1 text-sm text-gray-900 dark:text-white sm:mt-0 sm:col-span-2">
-                {teacherLoading ? (
-                  <span className="text-gray-500 dark:text-gray-400">
-                    Fetching teacher information...
-                  </span>
-                ) : hasTeacherAssignment ? (
-                  teacher ? (
-                    <div className="space-y-1">
-                      <p className="font-medium">
-                        {isAdmin && teacherProfileId ? (
-                          <Link
-                            to={`/admin/users/${teacherProfileId}`}
-                            className="text-indigo-600 dark:text-indigo-400 hover:underline"
-                          >
-                            {teacherDisplayName ||
-                              `Teacher #${courseTeacherId}`}
-                          </Link>
-                        ) : (
-                          teacherDisplayName || `Teacher #${courseTeacherId}`
-                        )}
-                      </p>
-                      {teacher.email && (
-                        <p className="text-sm text-gray-600 dark:text-gray-300">
-                          {teacher.email}
-                        </p>
-                      )}
-                      {teacher.phone && (
-                        <p className="text-sm text-gray-600 dark:text-gray-300">
-                          {teacher.phone}
-                        </p>
-                      )}
-                    </div>
-                  ) : teacherError ? (
-                    <span className="text-red-500 dark:text-red-400">
-                      {teacherError}
-                    </span>
-                  ) : (
-                    <span className="text-gray-500 dark:text-gray-400">
-                      Teacher record not available.
-                    </span>
-                  )
-                ) : (
-                  <span className="text-gray-500 dark:text-gray-400">
-                    No teacher assigned yet.
-                  </span>
-                )}
-              </dd>
+          </div>
+          <div className="rounded-lg p-2 shadow border bg-gray-50 dark:bg-gray-700/50 border-gray-100 dark:border-gray-600">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Inactive</p>
+                <p className="text-sm font-bold text-red-600 dark:text-red-400">
+                  {inactiveStudents.length}
+                </p>
+              </div>
+              <FiUserX className="w-4 h-4 text-red-600 dark:text-red-400" />
             </div>
-            <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              <dt className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                Academic Year
-              </dt>
-              <dd className="mt-1 text-sm text-gray-900 dark:text-white sm:mt-0 sm:col-span-2">
-                {course.academicYear}
-              </dd>
+          </div>
+          <div className="rounded-lg p-2 shadow border bg-gray-50 dark:bg-gray-700/50 border-gray-100 dark:border-gray-600">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Classes</p>
+                <p className="text-sm font-bold text-amber-600 dark:text-amber-400">
+                  {subjects.length}
+                </p>
+              </div>
+              <FiBook className="w-4 h-4 text-amber-600 dark:text-amber-400" />
             </div>
-          </dl>
+          </div>
+        </div>
+
+        {/* Course Details */}
+        <div className="rounded-lg p-3 border bg-gray-50 dark:bg-gray-700/30 border-gray-200 dark:border-gray-600 mb-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Description</p>
+              <p className="text-gray-900 dark:text-white">{course.description || "No description"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Academic Year</p>
+              <p className="text-gray-900 dark:text-white">{course.academicYear || "Not specified"}</p>
+            </div>
+            <div className="md:col-span-2">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Assigned Teacher</p>
+              <p className="text-gray-900 dark:text-white">
+                {teacherLoading ? "Loading..." : 
+                 hasTeacherAssignment ? 
+                   (teacher ? teacherDisplayName : "Teacher not available") : 
+                   "No teacher assigned"}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
-
-      {/* <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
-          Study Materials
-        </h3>
-        {user.userType === "teacher" && (
-          <Button variant="primary" onClick={() => setShowMaterialModal(true)}>
-            Upload Material
-          </Button>
-        )}
-      </div>
-      <MaterialList materials={materials} /> */}
-
-      {/* <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
-          Attendance Records
-        </h3>
-        {user.userType === "teacher" && (
-          <Button
-            variant="primary"
-            onClick={() => navigate(`/teacher/attendance/${id}`)}
-          >
-            Take Attendance
-          </Button>
-        )}
-      </div>
-      <AttendanceList attendance={attendance} /> */}
 
       {/* Do not show enrolled students list to student users */}
       {user?.userType !== "student" && (
         <>
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
-              Enrolled Students
-            </h3>
-            {canModifyStudents ? (
-              <div className="flex items-center gap-2 self-end sm:self-auto">
-                <div className="relative ml-auto sm:ml-0" ref={studentMenuRef}>
-                  <Button
-                    variant="primary"
-                    onClick={() => setShowStudentMenu((s) => !s)}
-                    disabled={addingStudents}
-                  >
-                    + Add Student
-                  </Button>
-                  {showStudentMenu && (
-                    <div className="absolute right-0 mt-2 w-44 rounded-md border bg-white dark:bg-gray-800 z-20 shadow-md">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowStudentMenu(false);
-                          setStudentActionError("");
-                          setShowStudentPicker(true);
-                        }}
-                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
-                      >
-                        Add Existing
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowStudentMenu(false);
-                          setStudentActionError("");
-                          setRegisterStep(1);
-                          setPendingRegisterCore(null);
-                          setRegisterSelectedSubjectIds([]);
-                          setRegisterSubjectError("");
-                          setShowRegisterModal(true);
-                        }}
-                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
-                      >
-                        Register New Student
-                      </button>
-                    </div>
-                  )}
+          {/* Students Management Section */}
+          <div className="flex-grow overflow-y-auto mb-1 md:mb-2">
+            <div className="rounded-lg p-1 md:p-2 h-full overflow-y-auto bg-gray-100 dark:bg-gray-700/30">
+              
+              {/* Header with Search and Actions */}
+              <div className="flex flex-col md:flex-row gap-1 md:gap-2 mb-1 md:mb-2">
+                <div className="relative flex-1">
+                  <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <input
+                    type="text"
+                    placeholder="Search students by name, email, or roll number..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-8 pr-3 py-2 text-sm rounded-lg border bg-gray-50 border-gray-200 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                  />
                 </div>
-              </div>
-            ) : null}
-          </div>
-
-          {studentsError ? (
-            <div className="mt-3 text-sm text-red-600 dark:text-red-400">
-              {studentsError}
-            </div>
-          ) : null}
-          {studentActionError ? (
-            <div className="mt-3 text-sm text-red-600 dark:text-red-400">
-              {studentActionError}
-            </div>
-          ) : null}
-
-          <div className="mt-4">
-            {studentsLoading ? (
-              <Loader className="py-8" />
-            ) : (
-              <>
-                <div className="border-b border-gray-200 dark:border-gray-700">
-                  <nav
-                    className="-mb-px flex space-x-6"
-                    aria-label="Enrollment Tabs"
-                  >
+                
+                {/* Enrollment Tabs */}
+                <div className="flex flex-wrap gap-1">
+                  {["active", "inactive"].map((tab) => (
                     <button
-                      type="button"
-                      onClick={() => setStudentTab("active")}
-                      className={`whitespace-nowrap border-b-2 px-1 pb-2 text-sm font-medium transition-colors ${
-                        studentTab === "active"
-                          ? "border-indigo-500 text-indigo-600 dark:text-indigo-300"
-                          : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200"
+                      key={tab}
+                      onClick={() => setStudentTab(tab)}
+                      className={`px-2 py-1.5 text-xs rounded-lg font-medium ${
+                        studentTab === tab
+                          ? "bg-indigo-600 text-white"
+                          : "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
                       }`}
                     >
-                      Active Enrollments ({activeStudents.length})
+                      {tab === "active" ? "Active" : "Inactive"}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setStudentTab("inactive")}
-                      className={`whitespace-nowrap border-b-2 px-1 pb-2 text-sm font-medium transition-colors ${
-                        studentTab === "inactive"
-                          ? "border-indigo-500 text-indigo-600 dark:text-indigo-300"
-                          : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200"
-                      }`}
-                    >
-                      Inactive Enrollments ({inactiveStudents.length})
-                    </button>
-                  </nav>
+                  ))}
                 </div>
 
-                {/* Subject tabs (appear under Active/Inactive tabs) */}
-                {hasSubjectGrouping && (
-                  <div className="mt-3 border-b border-gray-200 dark:border-gray-700">
-                    <nav
-                      className="-mb-px flex space-x-4 overflow-auto"
-                      aria-label="Subject Tabs"
+                {/* Add Student Button */}
+                {canModifyStudents && (
+                  <div className="relative" ref={studentMenuRef}>
+                    <button
+                      onClick={() => setShowStudentMenu((s) => !s)}
+                      disabled={addingStudents}
+                      className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm"
                     >
-                      <button
-                        type="button"
-                        onClick={() => setSelectedSubjectTab("all")}
-                        className={`whitespace-nowrap border-b-2 px-2 pb-2 text-sm font-medium transition-colors ${
-                          selectedSubjectTab === "all"
-                            ? "border-indigo-500 text-indigo-600 dark:text-indigo-300"
-                            : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200"
-                        }`}
-                      >
-                        All Classes
-                      </button>
-                      {subjectGroupsWithStatus.map((g) => {
-                        const sid = String(
-                          g.subjectId ??
-                            g.SubjectID ??
-                            g.subjectName ??
-                            g.subjectName ??
-                            ""
-                        );
-                        const label = g.subjectName || `Subject ${sid}`;
-                        return (
-                          <button
-                            key={`stab-${sid}`}
-                            type="button"
-                            onClick={() => setSelectedSubjectTab(sid)}
-                            className={`whitespace-nowrap border-b-2 px-2 pb-2 text-sm font-medium transition-colors ${
-                              String(selectedSubjectTab) === sid
-                                ? "border-indigo-500 text-indigo-600 dark:text-indigo-300"
-                                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200"
-                            }`}
-                          >
-                            {label}
-                          </button>
-                        );
-                      })}
-                    </nav>
+                      <FiPlus className="w-4 h-4" /> Add Student
+                    </button>
+                    {showStudentMenu && (
+                      <div className="absolute right-0 mt-2 w-48 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg z-20 overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowStudentMenu(false);
+                            setStudentActionError("");
+                            setShowStudentPicker(true);
+                          }}
+                          className="flex items-center w-full px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors"
+                        >
+                          <FiUsers className="w-4 h-4 mr-3" />
+                          Add Existing Student
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowStudentMenu(false);
+                            setStudentActionError("");
+                            setRegisterStep(1);
+                            setPendingRegisterCore(null);
+                            setRegisterSelectedSubjectIds([]);
+                            setRegisterSubjectError("");
+                            setShowRegisterModal(true);
+                          }}
+                          className="flex items-center w-full px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors"
+                        >
+                          <FiUserCheck className="w-4 h-4 mr-3" />
+                          Register New Student
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
+              </div>
 
-                <div className="mt-4">
-                  {studentTab === "active"
-                    ? hasSubjectGrouping
-                      ? selectedSubjectTab === "all"
-                        ? renderSubjectSections(
-                            subjectGroupsWithStatus.map((group) => ({
-                              ...group,
-                              students: group.activeStudents,
-                            })),
-                            {
-                              showRemove: canModifyStudents,
-                            }
-                          )
-                        : // single-subject view (active)
-                          (() => {
-                            const target = subjectGroupsWithStatus.find(
-                              (gg) =>
-                                String(
-                                  gg.subjectId ??
-                                    gg.SubjectID ??
-                                    gg.subjectName ??
-                                    gg.subjectName ??
-                                    ""
-                                ) === String(selectedSubjectTab)
-                            );
-                            return target
-                              ? renderEnrollmentList(
-                                  target.activeStudents || [],
-                                  {
-                                    showRemove: canModifyStudents,
-                                  }
-                                )
-                              : renderEnrollmentList([], {
-                                  showRemove: canModifyStudents,
-                                });
-                          })()
-                      : renderEnrollmentList(activeStudents, {
-                          showRemove: canModifyStudents,
-                        })
-                    : hasSubjectGrouping
-                    ? selectedSubjectTab === "all"
-                      ? renderSubjectSections(
-                          subjectGroupsWithStatus.map((group) => ({
-                            ...group,
-                            students: group.inactiveStudents,
-                          })),
-                          {
-                            showReactivate: canModifyStudents,
-                          }
-                        )
-                      : // single-subject view (inactive)
-                        (() => {
-                          const target = subjectGroupsWithStatus.find(
-                            (gg) =>
-                              String(
-                                gg.subjectId ??
-                                  gg.SubjectID ??
-                                  gg.subjectName ??
-                                  gg.subjectName ??
-                                  ""
-                              ) === String(selectedSubjectTab)
-                          );
-                          return target
-                            ? renderEnrollmentList(
-                                target.inactiveStudents || [],
-                                {
-                                  showReactivate: canModifyStudents,
-                                }
-                              )
-                            : renderEnrollmentList([], {
-                                showReactivate: canModifyStudents,
-                              });
-                        })()
-                    : renderEnrollmentList(inactiveStudents, {
-                        showReactivate: canModifyStudents,
-                      })}
+              {studentsError && (
+                <div className="mt-3 p-3 text-sm text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 rounded-lg">
+                  {studentsError}
                 </div>
-              </>
-            )}
+              )}
+              {studentActionError && (
+                <div className="mt-3 p-3 text-sm text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 rounded-lg">
+                  {studentActionError}
+                </div>
+              )}
+
+              {/* Students Table */}
+              <div className="rounded-xl border overflow-hidden bg-gray-50 dark:bg-gray-700/30 border-gray-200 dark:border-gray-600">
+                {studentsLoading ? (
+                  <div className="flex items-center justify-center py-8 rounded-xl h-full">
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="relative">
+                        <div className="w-8 h-8 border-4 rounded-full animate-spin border-indigo-200 dark:border-indigo-800"></div>
+                        <div className="absolute inset-0 w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                      </div>
+                      <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                        Loading students...
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <div className="max-h-96 overflow-y-auto">
+                      <table className="w-full">
+                        <thead className="sticky top-0 bg-gray-100 dark:bg-gray-700">
+                          <tr>
+                            <th className="px-3 py-3 text-left text-xs font-semibold tracking-wider">
+                              Student
+                            </th>
+                            <th className="px-3 py-3 text-left text-xs font-semibold tracking-wider hidden md:table-cell">
+                              Email
+                            </th>
+                            <th className="px-3 py-3 text-left text-xs font-semibold tracking-wider hidden lg:table-cell">
+                              Roll Number
+                            </th>
+                            <th className="px-3 py-3 text-left text-xs font-semibold tracking-wider hidden lg:table-cell">
+                              Enrollment Date
+                            </th>
+                            <th className="px-3 py-3 text-center text-xs font-semibold tracking-wider">
+                              Status
+                            </th>
+                            <th className="px-3 py-3 text-center text-xs font-semibold tracking-wider">
+                              Actions
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                          {filteredStudents.map((student, index) => {
+                            const enrollmentId = resolveEnrollmentId(student);
+                            const loading = enrollmentId
+                              ? Boolean(enrollmentLoadingMap[enrollmentId])
+                              : false;
+                            const detailPath = getStudentDetailsPath(student);
+                            const name =
+                              `${student.FirstName || student.firstName || ""} ${
+                                student.LastName || student.lastName || ""
+                              }`
+                                .replace(/\s+/g, " ")
+                                .trim() || "Unnamed Student";
+                            const email =
+                              student.Email ||
+                              student.email ||
+                              "No email";
+                            const rollNumber =
+                              student.RollNumber || student.rollNumber || "N/A";
+                            const enrollmentDate = formatEnrollmentDate(
+                              student.EnrollmentDate ?? student.enrollmentDate
+                            );
+                            const isActive = resolveEnrollmentActive(student);
+
+                            return (
+                              <tr
+                                key={enrollmentId || index}
+                                className="transition-colors duration-150 hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                              >
+                                <td className="px-3 py-3 whitespace-nowrap">
+                                  <div className="flex items-center gap-3">
+                                    <Avatar
+                                      name={name}
+                                      size="sm"
+                                      user={student}
+                                    />
+                                    <div>
+                                      <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                        {detailPath ? (
+                                          <Link to={detailPath} className="hover:text-indigo-600 dark:hover:text-indigo-400">
+                                            {name}
+                                          </Link>
+                                        ) : (
+                                          name
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white hidden md:table-cell">
+                                  {email}
+                                </td>
+                                <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white hidden lg:table-cell">
+                                  {rollNumber}
+                                </td>
+                                <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white hidden lg:table-cell">
+                                  {enrollmentDate}
+                                </td>
+                                <td className="px-3 py-3 whitespace-nowrap text-center">
+                                  <span
+                                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                                      isActive
+                                        ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
+                                        : "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400"
+                                    }`}
+                                  >
+                                    {isActive ? (
+                                      <>
+                                        <FiUserCheck className="w-3 h-3" />
+                                        <span className="hidden xs:inline">Active</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <FiUserX className="w-3 h-3" />
+                                        <span className="hidden xs:inline">Inactive</span>
+                                      </>
+                                    )}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-3 whitespace-nowrap text-center">
+                                  {canModifyStudents && (
+                                    <button
+                                      onClick={() => 
+                                        isActive 
+                                          ? handleRemoveEnrollment(student)
+                                          : handleReactivateEnrollment(student)
+                                      }
+                                      disabled={loading || !enrollmentId}
+                                      className={`px-2 py-1 rounded-lg text-xs font-medium transition-all ${
+                                        loading || !enrollmentId
+                                          ? "opacity-50 cursor-not-allowed text-gray-400"
+                                          : isActive
+                                          ? "bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-800/50"
+                                          : "bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-800/50"
+                                      }`}
+                                    >
+                                      {loading 
+                                        ? "Processing..." 
+                                        : isActive 
+                                          ? "Remove" 
+                                          : "Activate"
+                                      }
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+
+                      {filteredStudents.length === 0 && (
+                        <div className="text-center py-8 h-full flex items-center justify-center">
+                          <div>
+                            <FiUsers className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                              No students found
+                            </p>
+                            <p className="text-xs text-gray-400 dark:text-gray-500">
+                              Try adjusting your search or filters
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </>
       )}
+
+      {/* Modals */}
       <StudentPickerModal
         isOpen={showStudentPicker}
         onClose={handleStudentPickerClose}
@@ -2759,125 +2560,131 @@ const CourseView = () => {
         errorMessage={studentActionError}
       />
 
-      <Modal
-        isOpen={showRegisterModal}
-        onClose={handleRegisterModalClose}
-        title="Register New Student"
-        size="lg"
-      >
-        <UserForm
-          onSubmit={handleRegisterStudentSubmit}
-          loading={registerStep === 2 && addingStudents}
-          forceUserType={3}
-          showCoreFields={registerStep === 1}
-          showRoleFields={registerStep === 2}
-          submitLabel={registerStep === 1 ? "Next" : "Create Student"}
-          additionalRoleContent={({ userTypeID }) => {
-            if (String(userTypeID) !== "3") {
-              return null;
-            }
-
-            if (!courseSubjectOptions.length) {
-              return (
-                <div className="mt-4 rounded-md border border-dashed border-gray-200 px-3 py-2 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
-                  This course does not have any linked classes. The student will
-                  be enrolled at the course level.
+      {/* Register New Student Modal */}
+      {showRegisterModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm z-50 p-2">
+          <div className="rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white dark:bg-gray-800">
+            <div className="relative">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-lg bg-indigo-100 dark:bg-indigo-900/30">
+                    <FiUserCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  </div>
+                  <h2 className="text-lg font-bold">Register New Student</h2>
                 </div>
-              );
-            }
-
-            return (
-              <div className="mt-4 space-y-3 rounded-md border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
-                    Select classes for this student
-                  </p>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    {registerSelectedSubjectIds.length} selected
-                  </span>
-                </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {courseSubjectOptions.map((option) => {
-                    const optionId = String(option.id);
-                    const checked =
-                      registerSelectedSubjectIds.includes(optionId);
-                    return (
-                      <label
-                        key={`reg-subject-${optionId}`}
-                        className="flex cursor-pointer items-start gap-3 rounded-lg border border-transparent bg-white px-3 py-2 shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50 dark:bg-gray-800 dark:hover:border-indigo-500/40 dark:hover:bg-gray-800/70"
-                      >
-                        <input
-                          type="checkbox"
-                          className="mt-1 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                          checked={checked}
-                          disabled={registerStep === 2 && addingStudents}
-                          onChange={(event) => {
-                            const { checked: isChecked } = event.target;
-                            setRegisterSelectedSubjectIds((prev) => {
-                              const next = new Set(
-                                prev.map((id) => String(id))
-                              );
-                              if (isChecked) {
-                                next.add(optionId);
-                              } else {
-                                next.delete(optionId);
-                              }
-                              setRegisterSubjectError("");
-                              return Array.from(next);
-                            });
-                          }}
-                        />
-                        <span className="flex flex-col">
-                          <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                            {option.label}
-                          </span>
-                          {option.code ? (
-                            <span className="text-xs text-gray-500 dark:text-gray-400">
-                              {option.code}
-                            </span>
-                          ) : null}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-                {registerSubjectError ? (
-                  <p className="text-xs text-red-600 dark:text-red-400">
-                    {registerSubjectError}
-                  </p>
-                ) : null}
+                <button
+                  onClick={handleRegisterModalClose}
+                  className="p-1 rounded-lg transition-colors duration-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <FiX className="w-4 h-4 text-gray-400" />
+                </button>
               </div>
-            );
-          }}
-        />
-      </Modal>
+
+              {/* Modal Body */}
+              <div className="p-4">
+                <UserForm
+                  onSubmit={handleRegisterStudentSubmit}
+                  loading={registerStep === 2 && addingStudents}
+                  forceUserType={3}
+                  showCoreFields={registerStep === 1}
+                  showRoleFields={registerStep === 2}
+                  submitLabel={registerStep === 1 ? "Next" : "Create Student"}
+                  additionalRoleContent={({ userTypeID }) => {
+                    if (String(userTypeID) !== "3") {
+                      return null;
+                    }
+
+                    if (!courseSubjectOptions.length) {
+                      return (
+                        <div className="mt-4 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 px-4 py-3 text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50">
+                          This course does not have any linked classes. The student will
+                          be enrolled at the course level.
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="mt-6 space-y-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                            Select classes for this student
+                          </p>
+                          <span className="text-xs text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-700 px-2 py-1 rounded-full">
+                            {registerSelectedSubjectIds.length} selected
+                          </span>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {courseSubjectOptions.map((option) => {
+                            const optionId = String(option.id);
+                            const checked =
+                              registerSelectedSubjectIds.includes(optionId);
+                            return (
+                              <label
+                                key={`reg-subject-${optionId}`}
+                                className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-all ${
+                                  checked
+                                    ? "border-indigo-300 bg-indigo-50 dark:border-indigo-500 dark:bg-indigo-900/20"
+                                    : "border-gray-200 bg-white hover:border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:hover:border-gray-500"
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                  checked={checked}
+                                  disabled={registerStep === 2 && addingStudents}
+                                  onChange={(event) => {
+                                    const { checked: isChecked } = event.target;
+                                    setRegisterSelectedSubjectIds((prev) => {
+                                      const next = new Set(
+                                        prev.map((id) => String(id))
+                                      );
+                                      if (isChecked) {
+                                        next.add(optionId);
+                                      } else {
+                                        next.delete(optionId);
+                                      }
+                                      setRegisterSubjectError("");
+                                      return Array.from(next);
+                                    });
+                                  }}
+                                />
+                                <span className="flex flex-col">
+                                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                                    {option.label}
+                                  </span>
+                                  {option.code ? (
+                                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                                      {option.code}
+                                    </span>
+                                  ) : null}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        {registerSubjectError ? (
+                          <p className="text-sm text-red-600 dark:text-red-400">
+                            {registerSubjectError}
+                          </p>
+                        ) : null}
+                      </div>
+                    );
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Toast
         message={toastMessage}
         type={toastType}
         onClose={() => setToastMessage("")}
       />
 
-      <Modal
-        isOpen={showMaterialModal}
-        onClose={() => setShowMaterialModal(false)}
-        title="Upload Study Material"
-      >
-        <MaterialForm
-          courseId={id}
-          onSuccess={handleMaterialSubmit}
-          onCancel={() => setShowMaterialModal(false)}
-        />
-      </Modal>
-
-      <Modal
-        isOpen={showQRModal}
-        onClose={() => setShowQRModal(false)}
-        title="Generate QR Code for Attendance"
-        size="lg"
-      >
-        <QRGenerator courseId={id} />
-      </Modal>
-      {/* Edit Course Modal (admin) */}
+      {/* Edit Course Modal */}
       <Modal
         isOpen={showEditModal}
         onClose={() => setShowEditModal(false)}
@@ -3148,8 +2955,10 @@ const CourseView = () => {
               const updated = await updateCourse(id, courseValues);
               setCourse(updated);
               setShowEditModal(false);
+              showAlertMessage("Course updated successfully!", "success");
             } catch (err) {
               console.error("Failed to update course:", err);
+              showAlertMessage("Failed to update course. Please try again.", "error");
             } finally {
               setSavingEdit(false);
             }
