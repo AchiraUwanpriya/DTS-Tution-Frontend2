@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import Button from "../common/Button";
+
+// import Modal from "../common/Modal";
+
 import Modal from "../common/Modal2";
+
 import SubjectForm from "../admin/SubjectForm";
 import {
   // getLatestSubjectId,

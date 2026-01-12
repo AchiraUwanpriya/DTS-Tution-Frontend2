@@ -1,4 +1,11 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+  Fragment,
+} from "react";
 import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import {
@@ -15,7 +22,11 @@ import { getCourseAttendance } from "../../services/attendanceService";
 import { getUserById } from "../../services/userService";
 import MaterialList from "../materials/MaterialList";
 import AttendanceList from "../attendance/AttendanceList";
+
+// import Modal from "../common/Modal";
+
 import Modal from "../common/Modal2";
+
 import StudentPickerModal from "../common/StudentPickerModal";
 import CourseForm from "./CourseForm";
 import MaterialForm from "../materials/MaterialForm";
@@ -1076,6 +1087,67 @@ const CourseView = () => {
     });
   }, [subjectStudentGroups, resolveEnrollmentActive]);
 
+  const matchesSearchTerm = useCallback(
+    (student) => {
+      if (!searchTerm) {
+        return true;
+      }
+
+      const normalized = searchTerm.trim().toLowerCase();
+      if (!normalized) {
+        return true;
+      }
+
+      const fullName = `${student.FirstName || student.firstName || ""} ${
+        student.LastName || student.lastName || ""
+      }`
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+
+      if (fullName && fullName.includes(normalized)) {
+        return true;
+      }
+
+      const email = (student.Email || student.email || "").toLowerCase();
+      if (email && email.includes(normalized)) {
+        return true;
+      }
+
+      const rollNumber = (
+        student.RollNumber ||
+        student.rollNumber ||
+        ""
+      ).toLowerCase();
+      if (rollNumber && rollNumber.includes(normalized)) {
+        return true;
+      }
+
+      const subjectCandidates = [
+        student.SubjectName,
+        student.subjectName,
+        student.CourseSubjectName,
+        student.courseSubjectName,
+        student?.Subject?.SubjectName,
+        student?.Subject?.subjectName,
+        student?.subject?.SubjectName,
+        student?.subject?.subjectName,
+      ];
+
+      for (const candidate of subjectCandidates) {
+        if (
+          typeof candidate === "string" &&
+          candidate.trim().toLowerCase().includes(normalized)
+        ) {
+          return true;
+        }
+      }
+
+      return false;
+    },
+    [searchTerm]
+  );
+
   const courseSubjectOptions = useMemo(() => {
     const options = [];
     const seen = new Set();
@@ -1288,7 +1360,9 @@ const CourseView = () => {
       case "error":
         return <FiX className="w-5 h-5 text-red-600 dark:text-red-400" />;
       case "warning":
-        return <FiBook className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />;
+        return (
+          <FiBook className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
+        );
       case "info":
         return <FiUsers className="w-5 h-5 text-blue-600 dark:text-blue-400" />;
       default:
@@ -1631,7 +1705,10 @@ const CourseView = () => {
   const handleEnrollmentStatusChange = async (studentEntry, makeActive) => {
     const enrollmentId = resolveEnrollmentId(studentEntry);
     if (!enrollmentId) {
-      showAlertMessage("Unable to update enrollment. Missing identifier.", "error");
+      showAlertMessage(
+        "Unable to update enrollment. Missing identifier.",
+        "error"
+      );
       return;
     }
 
@@ -2017,7 +2094,10 @@ const CourseView = () => {
           "success"
         );
       } else {
-        showAlertMessage("Student created and enrolled in the course.", "success");
+        showAlertMessage(
+          "Student created and enrolled in the course.",
+          "success"
+        );
       }
     } catch (error) {
       console.error("Failed to create student", error);
@@ -2095,24 +2175,163 @@ const CourseView = () => {
   };
 
   // Filter students based on search term
-  const filteredStudents = useMemo(() => {
-    const currentStudents = studentTab === "active" ? activeStudents : inactiveStudents;
-    
-    if (!searchTerm) return currentStudents;
+  const getStudentGroupKey = useCallback(
+    (student) => {
+      const enrollmentId = resolveEnrollmentId(student);
+      if (enrollmentId) {
+        return `enrollment:${enrollmentId}`;
+      }
 
-    return currentStudents.filter((student) => {
-      const name = `${student.FirstName || student.firstName || ""} ${
+      const studentId = resolveStudentId(student);
+      if (studentId) {
+        return `student:${studentId}`;
+      }
+
+      const email = (student.Email || student.email || "").trim().toLowerCase();
+      if (email) {
+        return `email:${email}`;
+      }
+
+      const rollNumber = (student.RollNumber || student.rollNumber || "")
+        .trim()
+        .toLowerCase();
+      if (rollNumber) {
+        return `roll:${rollNumber}`;
+      }
+
+      const nameKey = `${student.FirstName || student.firstName || ""} ${
         student.LastName || student.lastName || ""
-      }`.toLowerCase();
-      
-      const email = (student.Email || student.email || "").toLowerCase();
-      const rollNumber = (student.RollNumber || student.rollNumber || "").toLowerCase();
-      
-      return name.includes(searchTerm.toLowerCase()) ||
-             email.includes(searchTerm.toLowerCase()) ||
-             rollNumber.includes(searchTerm.toLowerCase());
-    });
-  }, [activeStudents, inactiveStudents, studentTab, searchTerm]);
+      }`
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+      if (nameKey) {
+        const enrollmentDate = String(
+          student.EnrollmentDate || student.enrollmentDate || ""
+        ).trim();
+        return `name:${nameKey}:${enrollmentDate}`;
+      }
+
+      return "";
+    },
+    [resolveEnrollmentId, resolveStudentId]
+  );
+
+  const filteredStudentGroups = useMemo(() => {
+    const groups = [];
+    const usedKeys = new Set();
+
+    const addGroup = (groupMeta, list) => {
+      if (!Array.isArray(list) || !list.length) {
+        return;
+      }
+
+      for (const student of list) {
+        const key = getStudentGroupKey(student);
+        if (key) {
+          usedKeys.add(key);
+        }
+      }
+
+      const rawNameValue =
+        groupMeta.subjectName ??
+        groupMeta.SubjectName ??
+        groupMeta.name ??
+        groupMeta.Name ??
+        null;
+      const rawName =
+        rawNameValue !== null && rawNameValue !== undefined
+          ? String(rawNameValue).trim()
+          : "";
+
+      const rawCodeValue =
+        groupMeta.subjectCode ??
+        groupMeta.SubjectCode ??
+        groupMeta.code ??
+        null;
+      const subjectCode =
+        rawCodeValue !== null && rawCodeValue !== undefined
+          ? String(rawCodeValue).trim()
+          : "";
+
+      let displayName = rawName;
+      if (!displayName) {
+        if (subjectCode) {
+          displayName = subjectCode;
+        } else if (
+          (groupMeta.subjectId !== null && groupMeta.subjectId !== undefined) ||
+          (groupMeta.SubjectID !== null && groupMeta.SubjectID !== undefined) ||
+          (groupMeta.SubjectId !== null && groupMeta.SubjectId !== undefined)
+        ) {
+          const subjectIdentifier =
+            groupMeta.subjectId ?? groupMeta.SubjectID ?? groupMeta.SubjectId;
+          displayName = `Class ${subjectIdentifier}`;
+        } else {
+          displayName = "Unassigned Class";
+        }
+      }
+
+      const subjectIdentifier =
+        groupMeta.subjectId ??
+        groupMeta.SubjectID ??
+        groupMeta.SubjectId ??
+        null;
+
+      groups.push({
+        id:
+          subjectIdentifier !== null && subjectIdentifier !== undefined
+            ? subjectIdentifier
+            : displayName,
+        displayName,
+        subjectCode,
+        students: list,
+      });
+    };
+
+    if (
+      Array.isArray(subjectGroupsWithStatus) &&
+      subjectGroupsWithStatus.length
+    ) {
+      for (const group of subjectGroupsWithStatus) {
+        const baseList =
+          studentTab === "active"
+            ? group.activeStudents
+            : group.inactiveStudents;
+
+        if (!Array.isArray(baseList) || !baseList.length) {
+          continue;
+        }
+
+        const filteredList = baseList.filter(matchesSearchTerm);
+        if (!filteredList.length) {
+          continue;
+        }
+
+        addGroup(group, filteredList);
+      }
+    }
+
+    // Do not show students that could not be matched to a subject group
+    // (remove the previous 'Unassigned Class' bucket per request).
+
+    return groups;
+  }, [
+    subjectGroupsWithStatus,
+    studentTab,
+    matchesSearchTerm,
+    activeStudents,
+    inactiveStudents,
+    getStudentGroupKey,
+  ]);
+
+  const totalFilteredStudents = useMemo(
+    () =>
+      filteredStudentGroups.reduce(
+        (total, group) => total + group.students.length,
+        0
+      ),
+    [filteredStudentGroups]
+  );
 
   if (loading || !course) {
     return <Loader className="py-12" />;
@@ -2153,8 +2372,9 @@ const CourseView = () => {
   );
 
   return (
-    <div className={`flex flex-col p-1 md:p-1 rounded-xl shadow-md h-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700`}>
-      
+    <div
+      className={`flex flex-col p-1 md:p-1 rounded-xl shadow-md h-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700`}
+    >
       {/* Alert System */}
       {showAlert && (
         <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[9999] animate-fade-in-down w-full max-w-md px-2 sm:px-0">
@@ -2209,7 +2429,9 @@ const CourseView = () => {
           <div className="rounded-lg p-2 shadow border bg-gray-50 dark:bg-gray-700/50 border-gray-100 dark:border-gray-600">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Total Students</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Total Students
+                </p>
                 <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
                   {students.length}
                 </p>
@@ -2220,7 +2442,9 @@ const CourseView = () => {
           <div className="rounded-lg p-2 shadow border bg-gray-50 dark:bg-gray-700/50 border-gray-100 dark:border-gray-600">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Active</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Active
+                </p>
                 <p className="text-sm font-bold text-green-600 dark:text-green-400">
                   {activeStudents.length}
                 </p>
@@ -2231,7 +2455,9 @@ const CourseView = () => {
           <div className="rounded-lg p-2 shadow border bg-gray-50 dark:bg-gray-700/50 border-gray-100 dark:border-gray-600">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Inactive</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Inactive
+                </p>
                 <p className="text-sm font-bold text-red-600 dark:text-red-400">
                   {inactiveStudents.length}
                 </p>
@@ -2242,7 +2468,9 @@ const CourseView = () => {
           <div className="rounded-lg p-2 shadow border bg-gray-50 dark:bg-gray-700/50 border-gray-100 dark:border-gray-600">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Classes</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Classes
+                </p>
                 <p className="text-sm font-bold text-amber-600 dark:text-amber-400">
                   {subjects.length}
                 </p>
@@ -2256,20 +2484,33 @@ const CourseView = () => {
         <div className="rounded-lg p-3 border bg-gray-50 dark:bg-gray-700/30 border-gray-200 dark:border-gray-600 mb-2">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
             <div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Description</p>
-              <p className="text-gray-900 dark:text-white">{course.description || "No description"}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                Description
+              </p>
+              <p className="text-gray-900 dark:text-white">
+                {course.description || "No description"}
+              </p>
             </div>
             <div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Academic Year</p>
-              <p className="text-gray-900 dark:text-white">{course.academicYear || "Not specified"}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                Academic Year
+              </p>
+              <p className="text-gray-900 dark:text-white">
+                {course.academicYear || "Not specified"}
+              </p>
             </div>
             <div className="md:col-span-2">
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Assigned Teacher</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                Assigned Teacher
+              </p>
               <p className="text-gray-900 dark:text-white">
-                {teacherLoading ? "Loading..." : 
-                 hasTeacherAssignment ? 
-                   (teacher ? teacherDisplayName : "Teacher not available") : 
-                   "No teacher assigned"}
+                {teacherLoading
+                  ? "Loading..."
+                  : hasTeacherAssignment
+                  ? teacher
+                    ? teacherDisplayName
+                    : "Teacher not available"
+                  : "No teacher assigned"}
               </p>
             </div>
           </div>
@@ -2282,7 +2523,6 @@ const CourseView = () => {
           {/* Students Management Section */}
           <div className="flex-grow overflow-y-auto mb-1 md:mb-2">
             <div className="rounded-lg p-1 md:p-2 h-full overflow-y-auto bg-gray-100 dark:bg-gray-700/30">
-              
               {/* Header with Search and Actions */}
               <div className="flex flex-col md:flex-row gap-1 md:gap-2 mb-1 md:mb-2">
                 <div className="relative flex-1">
@@ -2295,7 +2535,7 @@ const CourseView = () => {
                     className="w-full pl-8 pr-3 py-2 text-sm rounded-lg border bg-gray-50 border-gray-200 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                   />
                 </div>
-                
+
                 {/* Enrollment Tabs */}
                 <div className="flex flex-wrap gap-1">
                   {["active", "inactive"].map((tab) => (
@@ -2411,117 +2651,168 @@ const CourseView = () => {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                          {filteredStudents.map((student, index) => {
-                            const enrollmentId = resolveEnrollmentId(student);
-                            const loading = enrollmentId
-                              ? Boolean(enrollmentLoadingMap[enrollmentId])
-                              : false;
-                            const detailPath = getStudentDetailsPath(student);
-                            const name =
-                              `${student.FirstName || student.firstName || ""} ${
-                                student.LastName || student.lastName || ""
-                              }`
-                                .replace(/\s+/g, " ")
-                                .trim() || "Unnamed Student";
-                            const email =
-                              student.Email ||
-                              student.email ||
-                              "No email";
-                            const rollNumber =
-                              student.RollNumber || student.rollNumber || "N/A";
-                            const enrollmentDate = formatEnrollmentDate(
-                              student.EnrollmentDate ?? student.enrollmentDate
-                            );
-                            const isActive = resolveEnrollmentActive(student);
+                          {filteredStudentGroups.map((group) => {
+                            const groupLabel = group.subjectCode
+                              ? `${group.displayName} (${group.subjectCode})`
+                              : group.displayName;
 
                             return (
-                              <tr
-                                key={enrollmentId || index}
-                                className="transition-colors duration-150 hover:bg-gray-50 dark:hover:bg-gray-700/50"
-                              >
-                                <td className="px-3 py-3 whitespace-nowrap">
-                                  <div className="flex items-center gap-3">
-                                    <Avatar
-                                      name={name}
-                                      size="sm"
-                                      user={student}
-                                    />
-                                    <div>
-                                      <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                        {detailPath ? (
-                                          <Link to={detailPath} className="hover:text-indigo-600 dark:hover:text-indigo-400">
-                                            {name}
-                                          </Link>
-                                        ) : (
-                                          name
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </td>
-                                <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white hidden md:table-cell">
-                                  {email}
-                                </td>
-                                <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white hidden lg:table-cell">
-                                  {rollNumber}
-                                </td>
-                                <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white hidden lg:table-cell">
-                                  {enrollmentDate}
-                                </td>
-                                <td className="px-3 py-3 whitespace-nowrap text-center">
-                                  <span
-                                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-                                      isActive
-                                        ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
-                                        : "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400"
-                                    }`}
+                              <Fragment key={`group-${group.id}`}>
+                                <tr className="bg-gray-100 dark:bg-gray-800/40">
+                                  <td
+                                    colSpan={6}
+                                    className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300"
                                   >
-                                    {isActive ? (
-                                      <>
-                                        <FiUserCheck className="w-3 h-3" />
-                                        <span className="hidden xs:inline">Active</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <FiUserX className="w-3 h-3" />
-                                        <span className="hidden xs:inline">Inactive</span>
-                                      </>
-                                    )}
-                                  </span>
-                                </td>
-                                <td className="px-3 py-3 whitespace-nowrap text-center">
-                                  {canModifyStudents && (
-                                    <button
-                                      onClick={() => 
-                                        isActive 
-                                          ? handleRemoveEnrollment(student)
-                                          : handleReactivateEnrollment(student)
-                                      }
-                                      disabled={loading || !enrollmentId}
-                                      className={`px-2 py-1 rounded-lg text-xs font-medium transition-all ${
-                                        loading || !enrollmentId
-                                          ? "opacity-50 cursor-not-allowed text-gray-400"
-                                          : isActive
-                                          ? "bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-800/50"
-                                          : "bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-800/50"
-                                      }`}
+                                    <div className="flex items-center justify-between">
+                                      <span>{groupLabel}</span>
+                                      <span className="text-[0.65rem] font-normal text-gray-500 dark:text-gray-400">
+                                        {group.students.length} student
+                                        {group.students.length === 1 ? "" : "s"}
+                                      </span>
+                                    </div>
+                                  </td>
+                                </tr>
+                                {group.students.map((student, index) => {
+                                  const enrollmentId =
+                                    resolveEnrollmentId(student);
+                                  const loading = enrollmentId
+                                    ? Boolean(
+                                        enrollmentLoadingMap[enrollmentId]
+                                      )
+                                    : false;
+                                  const detailPath =
+                                    getStudentDetailsPath(student);
+                                  const name =
+                                    `${
+                                      student.FirstName ||
+                                      student.firstName ||
+                                      ""
+                                    } ${
+                                      student.LastName || student.lastName || ""
+                                    }`
+                                      .replace(/\s+/g, " ")
+                                      .trim() || "Unnamed Student";
+                                  const email =
+                                    student.Email ||
+                                    student.email ||
+                                    "No email";
+                                  const rollNumber =
+                                    student.RollNumber ||
+                                    student.rollNumber ||
+                                    "N/A";
+                                  const enrollmentDate = formatEnrollmentDate(
+                                    student.EnrollmentDate ??
+                                      student.enrollmentDate
+                                  );
+                                  const isActive =
+                                    resolveEnrollmentActive(student);
+                                  const rowKey = `${group.id ?? "group"}-${
+                                    enrollmentId ||
+                                    resolveStudentId(student) ||
+                                    index
+                                  }`;
+
+                                  return (
+                                    <tr
+                                      key={rowKey}
+                                      className="transition-colors duration-150 hover:bg-gray-50 dark:hover:bg-gray-700/50"
                                     >
-                                      {loading 
-                                        ? "Processing..." 
-                                        : isActive 
-                                          ? "Remove" 
-                                          : "Activate"
-                                      }
-                                    </button>
-                                  )}
-                                </td>
-                              </tr>
+                                      <td className="px-3 py-3 whitespace-nowrap">
+                                        <div className="flex items-center gap-3">
+                                          <Avatar
+                                            name={name}
+                                            size="sm"
+                                            user={student}
+                                          />
+                                          <div>
+                                            <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                              {detailPath ? (
+                                                <Link
+                                                  to={detailPath}
+                                                  className="hover:text-indigo-600 dark:hover:text-indigo-400"
+                                                >
+                                                  {name}
+                                                </Link>
+                                              ) : (
+                                                name
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </td>
+                                      <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white hidden md:table-cell">
+                                        {email}
+                                      </td>
+                                      <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white hidden lg:table-cell">
+                                        {rollNumber}
+                                      </td>
+                                      <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white hidden lg:table-cell">
+                                        {enrollmentDate}
+                                      </td>
+                                      <td className="px-3 py-3 whitespace-nowrap text-center">
+                                        <span
+                                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                                            isActive
+                                              ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
+                                              : "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400"
+                                          }`}
+                                        >
+                                          {isActive ? (
+                                            <>
+                                              <FiUserCheck className="w-3 h-3" />
+                                              <span className="hidden xs:inline">
+                                                Active
+                                              </span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <FiUserX className="w-3 h-3" />
+                                              <span className="hidden xs:inline">
+                                                Inactive
+                                              </span>
+                                            </>
+                                          )}
+                                        </span>
+                                      </td>
+                                      <td className="px-3 py-3 whitespace-nowrap text-center">
+                                        {canModifyStudents && (
+                                          <button
+                                            onClick={() =>
+                                              isActive
+                                                ? handleRemoveEnrollment(
+                                                    student
+                                                  )
+                                                : handleReactivateEnrollment(
+                                                    student
+                                                  )
+                                            }
+                                            disabled={loading || !enrollmentId}
+                                            className={`px-2 py-1 rounded-lg text-xs font-medium transition-all ${
+                                              loading || !enrollmentId
+                                                ? "opacity-50 cursor-not-allowed text-gray-400"
+                                                : isActive
+                                                ? "bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-800/50"
+                                                : "bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-800/50"
+                                            }`}
+                                          >
+                                            {loading
+                                              ? "Processing..."
+                                              : isActive
+                                              ? "Remove"
+                                              : "Activate"}
+                                          </button>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </Fragment>
                             );
                           })}
                         </tbody>
                       </table>
 
-                      {filteredStudents.length === 0 && (
+                      {totalFilteredStudents === 0 && (
                         <div className="text-center py-8 h-full flex items-center justify-center">
                           <div>
                             <FiUsers className="w-8 h-8 mx-auto mb-2 opacity-50" />
@@ -2594,8 +2885,8 @@ const CourseView = () => {
                     if (!courseSubjectOptions.length) {
                       return (
                         <div className="mt-4 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 px-4 py-3 text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50">
-                          This course does not have any linked classes. The student will
-                          be enrolled at the course level.
+                          This course does not have any linked classes. The
+                          student will be enrolled at the course level.
                         </div>
                       );
                     }
@@ -2628,7 +2919,9 @@ const CourseView = () => {
                                   type="checkbox"
                                   className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                                   checked={checked}
-                                  disabled={registerStep === 2 && addingStudents}
+                                  disabled={
+                                    registerStep === 2 && addingStudents
+                                  }
                                   onChange={(event) => {
                                     const { checked: isChecked } = event.target;
                                     setRegisterSelectedSubjectIds((prev) => {
@@ -2954,7 +3247,10 @@ const CourseView = () => {
               showAlertMessage("Course updated successfully!", "success");
             } catch (err) {
               console.error("Failed to update course:", err);
-              showAlertMessage("Failed to update course. Please try again.", "error");
+              showAlertMessage(
+                "Failed to update course. Please try again.",
+                "error"
+              );
             } finally {
               setSavingEdit(false);
             }

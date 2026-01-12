@@ -269,7 +269,7 @@ const SubjectForm = ({
         >
           Cancel
         </Button>
-        <Button type="submit" variant="primary" disabled={loading || checking}>
+        <Button type="button" variant="primary" disabled={loading || checking} onClick={handleSubmit}>
           {loading || checking ? "Saving..." : "Save"}
         </Button>
       </div>

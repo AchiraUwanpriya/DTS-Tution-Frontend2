@@ -176,7 +176,7 @@ const AdminSubjects = () => {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm("Delete this class?")) return;
+    if (!window.confirm("Delete this class?")) return;
     try {
       const ok = await deleteSubject(id);
       if (ok) setSubjects((s) => s.filter((x) => String(x.id) !== String(id)));

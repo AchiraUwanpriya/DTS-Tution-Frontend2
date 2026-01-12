@@ -5,8 +5,8 @@ const sizeClasses = {
   sm: "max-w-sm",
   md: "max-w-5xl",
   lg: "max-w-2xl",
-  xl: "max-w-2xl",
-  "2xl": "max-w-3xl",
+  xl: "max-w-2xl"
+  // "2xl": "max-w-3xl",
 };
 
 const Modal = ({
